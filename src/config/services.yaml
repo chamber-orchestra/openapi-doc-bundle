@@ -1,0 +1,51 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    _instanceof:
+        ChamberOrchestra\OpenApiDocBundle\Parser\ComponentParserInterface:
+            tags: [ 'openapi_doc.component_parser' ]
+        ChamberOrchestra\OpenApiDocBundle\Parser\OperationParserInterface:
+            tags: [ 'openapi_doc.operation_parser' ]
+        ChamberOrchestra\OpenApiDocBundle\Parser\FormTypeHandler\FormTypeHandlerInterface:
+            tags: [ 'openapi_doc.form_type_handler' ]
+
+    # SecurityParser must run before OperationParser so that $model->security['default']
+    # is populated before OperationParser merges security schemes from #[Operation].
+    ChamberOrchestra\OpenApiDocBundle\Parser\SecurityParser:
+        tags:
+            - { name: 'openapi_doc.operation_parser', priority: 10 }
+    ChamberOrchestra\OpenApiDocBundle\Parser\OperationParser:
+        tags:
+            - { name: 'openapi_doc.operation_parser', priority: 0 }
+
+    ChamberOrchestra\OpenApiDocBundle\:
+        resource: '../*'
+
+    component.registry: '@ChamberOrchestra\OpenApiDocBundle\Registry\ComponentRegistry'
+    operation.registry: '@ChamberOrchestra\OpenApiDocBundle\Registry\OperationRegistry'
+
+    ChamberOrchestra\OpenApiDocBundle\Describer\DescriberInterface: '@ChamberOrchestra\OpenApiDocBundle\Describer\ComponentDescriber'
+
+    ChamberOrchestra\OpenApiDocBundle\Describer\ComponentDescriber:
+        arguments:
+            $parsers: !tagged_iterator { tag: 'openapi_doc.component_parser' }
+            $registry: '@component.registry'
+    ChamberOrchestra\OpenApiDocBundle\Describer\OperationDescriber:
+        arguments:
+            $parsers: !tagged_iterator { tag: 'openapi_doc.operation_parser' }
+            $registry: '@operation.registry'
+
+    ChamberOrchestra\OpenApiDocBundle\Parser\FormParser:
+        arguments:
+            $handlers: !tagged_iterator { tag: 'openapi_doc.form_type_handler' }
+
+    ChamberOrchestra\OpenApiDocBundle\Parser\FormTypeHandler\CollectionTypeHandler:
+        arguments:
+            $handlers: !tagged_iterator { tag: 'openapi_doc.form_type_handler' }
+
+    ChamberOrchestra\OpenApiDocBundle\Parser\FormTypeHandler\RepeatedTypeHandler:
+        arguments:
+            $handlers: !tagged_iterator { tag: 'openapi_doc.form_type_handler' }
