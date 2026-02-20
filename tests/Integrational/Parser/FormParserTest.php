@@ -203,18 +203,18 @@ class FormParserTest extends AbstractIntegrationTestCase
     {
         $this->describer->describe(NestedFormType::class);
 
-        $result = $this->registry->getAll();
+        $result = $this->schemas();
 
-        self::assertArrayHasKey('NestedFormType', $result['schemas']);
-        self::assertArrayHasKey('SimpleFormType', $result['schemas']);
+        self::assertArrayHasKey('NestedFormType', $result);
+        self::assertArrayHasKey('SimpleFormType', $result);
     }
 
     public function testNestedFormTypeOutputRefSchema(): void
     {
         $this->describer->describe(NestedFormType::class);
 
-        $result = $this->registry->getAll();
-        $schema = $result['schemas']['NestedFormType'];
+        $result = $this->schemas();
+        $schema = $result['NestedFormType'];
 
         self::assertSame(
             '#/components/schemas/SimpleFormType',
@@ -250,9 +250,9 @@ class FormParserTest extends AbstractIntegrationTestCase
     {
         $this->describer->describe(CollectionFormType::class);
 
-        $result = $this->registry->getAll();
+        $result = $this->schemas();
 
-        self::assertArrayHasKey('SimpleFormType', $result['schemas']);
+        self::assertArrayHasKey('SimpleFormType', $result);
     }
 
     // -------------------------------------------------------------------------
@@ -335,8 +335,8 @@ class FormParserTest extends AbstractIntegrationTestCase
     {
         $this->describer->describe(RecursiveFormType::class);
 
-        $result = $this->registry->getAll();
-        $schema = $result['schemas']['RecursiveFormType'];
+        $result = $this->schemas();
+        $schema = $result['RecursiveFormType'];
 
         self::assertSame(
             '#/components/schemas/RecursiveFormType',

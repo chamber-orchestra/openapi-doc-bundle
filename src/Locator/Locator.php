@@ -38,10 +38,11 @@ class Locator
             }
 
             // Pre-filter: only load classes whose source mentions both attributes.
-            // This avoids triggering class-loading (and potential uncatchable fatal
-            // compile errors) on files that cannot possibly match.
+            // Checks both short-name (#[Operation) and FQCN (Attribute\Operation) forms.
             $content = file_get_contents($file->getPathname());
-            if (!str_contains($content, '#[Operation') || !str_contains($content, '#[Route')) {
+            $hasOperation = str_contains($content, '#[Operation') || str_contains($content, 'Attribute\Operation');
+            $hasRoute     = str_contains($content, '#[Route')     || str_contains($content, 'Attribute\Route');
+            if (!$hasOperation || !$hasRoute) {
                 continue;
             }
 

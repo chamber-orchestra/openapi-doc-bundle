@@ -35,17 +35,14 @@ class ObjectParserTest extends AbstractIntegrationTestCase
     {
         $this->describer->describe(SimpleDto::class);
 
-        $result = $this->registry->getAll();
-
-        self::assertArrayHasKey('SimpleDto', $result['schemas']);
+        self::assertArrayHasKey('SimpleDto', $this->schemas());
     }
 
     public function testSimpleDtoOutputSchema(): void
     {
         $this->describer->describe(SimpleDto::class);
 
-        $result = $this->registry->getAll();
-        $schema = $result['schemas']['SimpleDto'];
+        $schema = $this->schemas()['SimpleDto'];
 
         self::assertSame('string', $schema['properties']['name']['type']);
         self::assertSame('integer', $schema['properties']['count']['type']);
@@ -75,18 +72,17 @@ class ObjectParserTest extends AbstractIntegrationTestCase
     {
         $this->describer->describe(NestedDto::class);
 
-        $result = $this->registry->getAll();
+        $schemas = $this->schemas();
 
-        self::assertArrayHasKey('NestedDto', $result['schemas']);
-        self::assertArrayHasKey('SimpleDto', $result['schemas']);
+        self::assertArrayHasKey('NestedDto', $schemas);
+        self::assertArrayHasKey('SimpleDto', $schemas);
     }
 
     public function testNestedDtoOutputRefSchema(): void
     {
         $this->describer->describe(NestedDto::class);
 
-        $result = $this->registry->getAll();
-        $nestedSchema = $result['schemas']['NestedDto'];
+        $nestedSchema = $this->schemas()['NestedDto'];
 
         self::assertSame(
             '#/components/schemas/SimpleDto',

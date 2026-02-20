@@ -17,7 +17,7 @@ class ViewParserTest extends AbstractIntegrationTestCase
         $component = $this->describer->describe(SimpleView::class);
 
         self::assertSame('SimpleView', $component->id);
-        self::assertNull($component->type); // plain object, not 'array'
+        self::assertNull($component->type);
 
         $properties = $this->indexByName($component->properties);
 
@@ -38,9 +38,7 @@ class ViewParserTest extends AbstractIntegrationTestCase
     {
         $this->describer->describe(SimpleView::class);
 
-        $result = $this->registry->getAll();
-
-        self::assertArrayHasKey('SimpleView', $result['schemas']);
+        self::assertArrayHasKey('SimpleView', $this->schemas());
     }
 
     public function testNestedViewCreatesRefToChild(): void
@@ -65,18 +63,17 @@ class ViewParserTest extends AbstractIntegrationTestCase
     {
         $this->describer->describe(NestedView::class);
 
-        $result = $this->registry->getAll();
+        $schemas = $this->schemas();
 
-        self::assertArrayHasKey('NestedView', $result['schemas']);
-        self::assertArrayHasKey('SimpleView', $result['schemas']);
+        self::assertArrayHasKey('NestedView', $schemas);
+        self::assertArrayHasKey('SimpleView', $schemas);
     }
 
     public function testNestedViewRefInOutput(): void
     {
         $this->describer->describe(NestedView::class);
 
-        $result = $this->registry->getAll();
-        $nestedSchema = $result['schemas']['NestedView'];
+        $nestedSchema = $this->schemas()['NestedView'];
 
         self::assertSame(
             '#/components/schemas/SimpleView',
@@ -111,8 +108,7 @@ class ViewParserTest extends AbstractIntegrationTestCase
     {
         $this->describer->describe(IterableContainerView::class);
 
-        $result = $this->registry->getAll();
-        $schema = $result['schemas']['IterableContainerView'];
+        $schema = $this->schemas()['IterableContainerView'];
 
         self::assertSame('string', $schema['properties']['title']['type']);
 
@@ -129,10 +125,6 @@ class ViewParserTest extends AbstractIntegrationTestCase
         self::assertSame($first, $second);
     }
 
-    // -------------------------------------------------------------------------
-    // RecursiveView — self-referential tree structure
-    // -------------------------------------------------------------------------
-
     public function testRecursiveViewDoesNotCauseInfiniteLoop(): void
     {
         $component = $this->describer->describe(RecursiveView::class);
@@ -144,8 +136,7 @@ class ViewParserTest extends AbstractIntegrationTestCase
     {
         $this->describer->describe(RecursiveView::class);
 
-        $result = $this->registry->getAll();
-        $schema = $result['schemas']['RecursiveView'];
+        $schema = $this->schemas()['RecursiveView'];
 
         self::assertSame(
             '#/components/schemas/RecursiveView',
@@ -160,7 +151,7 @@ class ViewParserTest extends AbstractIntegrationTestCase
 
         self::assertSame($first, $second);
         self::assertCount(1, array_filter(
-            array_keys($this->registry->getAll()['schemas']),
+            array_keys($this->schemas()),
             fn($k) => $k === 'RecursiveView'
         ));
     }

@@ -23,154 +23,76 @@ class OperationRegistryTest extends TestCase
         self::assertSame([], $this->registry->getAll());
     }
 
-    public function testSimpleOperation(): void
+    public function testRegisterAndRetrieve(): void
     {
-        $operation = new Operation();
-        $operation->id = 'getUser';
-        $operation->path = '/users/{id}';
+        $operation         = new Operation();
+        $operation->id     = 'getUser';
+        $operation->path   = '/users/{id}';
         $operation->method = 'GET';
-        $operation->description = 'Get a user';
 
         $this->registry->register($operation);
 
-        $result = $this->registry->getAll();
+        $all = $this->registry->getAll();
 
-        self::assertArrayHasKey('/users/{id}', $result);
-        self::assertArrayHasKey('get', $result['/users/{id}']);
-
-        $op = $result['/users/{id}']['get'];
-
-        self::assertSame('getUser', $op['operationId']);
-        self::assertSame('Get a user', $op['description']);
+        self::assertCount(1, $all);
+        self::assertSame($operation, $all[0]);
     }
 
-    public function testOperationWithoutDescriptionOmitsField(): void
+    public function testDuplicateRegistrationIsIgnored(): void
     {
-        $operation = new Operation();
-        $operation->id = 'listItems';
-        $operation->path = '/items';
-        $operation->method = 'GET';
-        $operation->description = null;
+        $first     = new Operation();
+        $first->id = 'op';
+        $first->path   = '/a';
+        $first->method = 'GET';
 
-        $this->registry->register($operation);
+        $second     = new Operation();
+        $second->id = 'op';
+        $second->path   = '/b';
+        $second->method = 'POST';
 
-        $result = $this->registry->getAll();
-        $op = $result['/items']['get'];
+        $this->registry->register($first);
+        $this->registry->register($second);
 
-        self::assertArrayNotHasKey('description', $op);
+        $all = $this->registry->getAll();
+
+        self::assertCount(1, $all);
+        self::assertSame('/a', $all[0]->path);
     }
 
-    public function testOperationWithComponentResponse(): void
+    public function testMultipleOperations(): void
     {
-        $response = new Component();
-        $response->id = 'UserView';
-        $response->status = 200;
-        $response->headers = ['Content-Type' => 'application/json'];
-
-        $operation = new Operation();
-        $operation->id = 'getUser';
-        $operation->path = '/users';
-        $operation->method = 'GET';
-        $operation->responses = [200 => $response];
-
-        $this->registry->register($operation);
-
-        $result = $this->registry->getAll();
-        $responses = $result['/users']['get']['responses'];
-
-        self::assertArrayHasKey(200, $responses);
-        self::assertSame('#/components/schemas/UserView', $responses[200]['content']['application/json']['schema']['$ref']);
-    }
-
-    public function testOperationWithStringResponse(): void
-    {
-        $operation = new Operation();
-        $operation->id = 'createUser';
-        $operation->path = '/users';
-        $operation->method = 'POST';
-        $operation->responses = ['404' => 'NotFound'];
-
-        $this->registry->register($operation);
-
-        $result = $this->registry->getAll();
-        $responses = $result['/users']['post']['responses'];
-
-        self::assertArrayHasKey('404', $responses);
-        self::assertSame('#/components/responses/NotFound', $responses['404']['$ref']);
-    }
-
-    public function testOperationWithRequestBody(): void
-    {
-        $requestComponent = new Component();
-        $requestComponent->id = 'UserForm';
-
-        $operation = new Operation();
-        $operation->id = 'createUser';
-        $operation->path = '/users';
-        $operation->method = 'POST';
-        $operation->request = $requestComponent;
-
-        $this->registry->register($operation);
-
-        $result = $this->registry->getAll();
-        $op = $result['/users']['post'];
-
-        self::assertArrayHasKey('requestBody', $op);
-        self::assertSame(
-            '#/components/schemas/UserForm',
-            $op['requestBody']['content']['application/json']['schema']['$ref']
-        );
-    }
-
-    public function testOperationWithSecurity(): void
-    {
-        $operation = new Operation();
-        $operation->id = 'securedEndpoint';
-        $operation->path = '/secured';
-        $operation->method = 'GET';
-        $operation->security = ['default' => []];
-
-        $this->registry->register($operation);
-
-        $result = $this->registry->getAll();
-        $op = $result['/secured']['get'];
-
-        self::assertSame([['default' => []]], $op['security']);
-    }
-
-    public function testMethodIsLowercased(): void
-    {
-        $operation = new Operation();
-        $operation->id = 'myEndpoint';
-        $operation->path = '/test';
-        $operation->method = 'DELETE';
-
-        $this->registry->register($operation);
-
-        $result = $this->registry->getAll();
-
-        self::assertArrayHasKey('delete', $result['/test']);
-        self::assertArrayNotHasKey('DELETE', $result['/test']);
-    }
-
-    public function testMultipleOperationsSamePath(): void
-    {
-        $get = new Operation();
-        $get->id = 'getUser';
-        $get->path = '/users/{id}';
+        $get         = new Operation();
+        $get->id     = 'getUser';
+        $get->path   = '/users/{id}';
         $get->method = 'GET';
 
-        $put = new Operation();
-        $put->id = 'updateUser';
-        $put->path = '/users/{id}';
-        $put->method = 'PUT';
+        $post         = new Operation();
+        $post->id     = 'createUser';
+        $post->path   = '/users';
+        $post->method = 'POST';
 
         $this->registry->register($get);
-        $this->registry->register($put);
+        $this->registry->register($post);
 
-        $result = $this->registry->getAll();
+        self::assertCount(2, $this->registry->getAll());
+    }
 
-        self::assertArrayHasKey('get', $result['/users/{id}']);
-        self::assertArrayHasKey('put', $result['/users/{id}']);
+    public function testRegisterReturnsSameModelOnDuplicate(): void
+    {
+        $operation         = new Operation();
+        $operation->id     = 'op';
+        $operation->path   = '/x';
+        $operation->method = 'GET';
+
+        $returned = $this->registry->register($operation);
+        self::assertSame($operation, $returned);
+
+        $duplicate         = new Operation();
+        $duplicate->id     = 'op';
+        $duplicate->path   = '/y';
+        $duplicate->method = 'POST';
+
+        $returned2 = $this->registry->register($duplicate);
+        self::assertSame($operation, $returned2);
     }
 }

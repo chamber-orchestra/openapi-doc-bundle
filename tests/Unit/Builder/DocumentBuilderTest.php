@@ -10,6 +10,7 @@ use ChamberOrchestra\OpenApiDocBundle\Model\Operation;
 use ChamberOrchestra\OpenApiDocBundle\Model\Property;
 use ChamberOrchestra\OpenApiDocBundle\Registry\ComponentRegistry;
 use ChamberOrchestra\OpenApiDocBundle\Registry\OperationRegistry;
+use ChamberOrchestra\OpenApiDocBundle\Serializer\OpenApiSerializer;
 use PHPUnit\Framework\TestCase;
 
 class DocumentBuilderTest extends TestCase
@@ -22,7 +23,7 @@ class DocumentBuilderTest extends TestCase
     {
         $this->operationRegistry = new OperationRegistry();
         $this->componentRegistry = new ComponentRegistry();
-        $this->builder = new DocumentBuilder($this->operationRegistry, $this->componentRegistry);
+        $this->builder = new DocumentBuilder($this->operationRegistry, $this->componentRegistry, new OpenApiSerializer());
     }
 
     public function testBuildReturnsOpenApiStructure(): void
@@ -120,7 +121,7 @@ class DocumentBuilderTest extends TestCase
         $operation->id = 'securedOp';
         $operation->path = '/secured';
         $operation->method = 'GET';
-        $operation->security = ['default' => []];
+        $operation->security = [\ChamberOrchestra\OpenApiDocBundle\Parser\SecurityParser::SECURITY_PLACEHOLDER => []];
         $this->operationRegistry->register($operation);
 
         $protoData = [
@@ -144,7 +145,7 @@ class DocumentBuilderTest extends TestCase
         $operation->id = 'securedOp';
         $operation->path = '/secured';
         $operation->method = 'GET';
-        $operation->security = ['default' => []];
+        $operation->security = [\ChamberOrchestra\OpenApiDocBundle\Parser\SecurityParser::SECURITY_PLACEHOLDER => []];
         $this->operationRegistry->register($operation);
 
         $result = $this->builder->build();

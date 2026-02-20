@@ -16,16 +16,11 @@ class EntityTypeHandler extends AbstractFormTypeHandler
 
     public function handle(Property $property, FormConfigInterface $config): void
     {
-        $entityClass = $config->getOption('class');
-
         if ($config->getOption('multiple')) {
-            $property->format = sprintf('[%s id]', $entityClass);
             $property->type = 'array';
-            $subProperty = Property::factory('items', 'string');
-            $property->items = $subProperty;
+            $property->items = Property::factory('items', 'integer');
         } else {
-            $property->type = 'string';
-            $property->format = sprintf('%s id', $entityClass);
+            $property->type = 'integer';
         }
     }
 }

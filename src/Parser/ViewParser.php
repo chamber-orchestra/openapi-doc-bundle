@@ -14,7 +14,6 @@ use ChamberOrchestra\OpenApiDocBundle\Model\Model;
 use ChamberOrchestra\OpenApiDocBundle\Model\Property;
 use ChamberOrchestra\OpenApiDocBundle\Utils\TypeConverter;
 use ReflectionClass;
-use ReflectionException;
 use ReflectionNamedType;
 use ReflectionProperty;
 use Symfony\Component\HttpFoundation\Response;
@@ -26,6 +25,7 @@ class ViewParser implements ComponentParserInterface
         private DescriberInterface $describer,
         private PropertyParser $parser,
         private TypeConverter $typeConverter,
+        private PublicPropertyParser $publicPropertyParser,
     ) {
     }
 
@@ -98,55 +98,22 @@ class ViewParser implements ComponentParserInterface
 
     private function buildProperty(ReflectionProperty $property, Component $model): Property
     {
-        $propertyName = $property->getName();
+        $propertyName   = $property->getName();
         $reflectionType = $property->getType();
-
-        if (!$reflectionType instanceof ReflectionNamedType) {
-            return Property::factory($propertyName, 'string');
-        }
-
-        $phpTypeName = $reflectionType->getName();
-        $openApiType = $this->typeConverter->toOpenApiType($phpTypeName);
-
-        // Primitive type (int, string, bool, float, array, iterable)
-        if (null !== $openApiType) {
-            $parameter = Property::factory($propertyName, $openApiType);
-            if ('array' === $openApiType) {
-                $this->resolveArrayItems($parameter, $property);
-            }
-
-            return $parameter;
-        }
+        $phpTypeName    = $reflectionType instanceof ReflectionNamedType ? $reflectionType->getName() : null;
 
         // IterableView property — always renders as array; items resolved from #[Type]
-        if ($this->isIterableViewType($phpTypeName)) {
+        if (null !== $phpTypeName && $this->isIterableViewType($phpTypeName)) {
             $parameter = Property::factory($propertyName, 'array');
             $this->resolveArrayItems($parameter, $property);
 
             return $parameter;
         }
 
-        // BackedEnum or well-known type (Uuid, DateTime) — map to primitive
-        if ($openApiProperty = $this->typeConverter->toOpenApiProperty($phpTypeName)) {
-            $parameter = Property::factory($propertyName, $openApiProperty['type']);
-            if (isset($openApiProperty['format'])) {
-                $parameter->format = $openApiProperty['format'];
-            }
-            if (!empty($openApiProperty['enum'])) {
-                $parameter->enum = $openApiProperty['enum'];
-            }
+        $parameter = $this->publicPropertyParser->build($propertyName, $phpTypeName, $model);
 
-            return $parameter;
-        }
-
-        // Other class — describe as a component $ref
-        try {
-            $child = $this->describer->describe($phpTypeName);
-            $child->parent = $model;
-            $parameter = Property::factory($propertyName, 'object');
-            $parameter->ref = $child;
-        } catch (ReflectionException $e) {
-            $parameter = Property::factory($propertyName, 'string');
+        if ('array' === $parameter->type && null === $parameter->items) {
+            $this->resolveArrayItems($parameter, $property);
         }
 
         return $parameter;

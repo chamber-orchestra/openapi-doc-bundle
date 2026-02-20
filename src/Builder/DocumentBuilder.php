@@ -6,14 +6,14 @@ namespace ChamberOrchestra\OpenApiDocBundle\Builder;
 
 use ChamberOrchestra\OpenApiDocBundle\Registry\ComponentRegistry;
 use ChamberOrchestra\OpenApiDocBundle\Registry\OperationRegistry;
-use function array_key_first;
-use function array_merge;
+use ChamberOrchestra\OpenApiDocBundle\Serializer\OpenApiSerializer;
 
 class DocumentBuilder
 {
     public function __construct(
         private OperationRegistry $operationRegistry,
         private ComponentRegistry $componentRegistry,
+        private OpenApiSerializer $serializer,
     ) {
     }
 
@@ -22,8 +22,20 @@ class DocumentBuilder
         string $version = '1.0.0',
         string $title = 'API Documentation',
     ): array {
-        $paths      = $this->buildPaths($protoData);
-        $components = $this->buildComponents($protoData);
+        $protoSchemes    = $protoData['components']['securitySchemes'] ?? [];
+        $firstScheme     = !empty($protoSchemes) ? array_key_first($protoSchemes) : null;
+
+        [$paths, $excludedIds] = $this->serializer->serializePaths(
+            $this->operationRegistry->getAll(),
+            $firstScheme,
+        );
+
+        $components = $this->serializer->serializeComponents(
+            $this->componentRegistry->getAll(),
+            $excludedIds,
+        );
+
+        $components = $this->mergeProto($components, $protoData);
 
         return [
             'openapi'    => '3.0.1',
@@ -33,54 +45,21 @@ class DocumentBuilder
         ];
     }
 
-    private function buildPaths(array $protoData): array
+    private function mergeProto(array $components, array $protoData): array
     {
-        $paths = $this->operationRegistry->getAll();
-        $protoSecuritySchemes = $protoData['components']['securitySchemes'] ?? [];
-        $firstSecurity = !empty($protoSecuritySchemes) ? array_key_first($protoSecuritySchemes) : null;
+        $protoComponents = $protoData['components'] ?? [];
 
-        foreach ($paths as &$methods) {
-            foreach ($methods as &$operation) {
-                // Do NOT use ?? here: it creates a temporary copy, breaking the reference chain.
-                if (empty($operation['security'])) {
-                    continue;
-                }
-                foreach ($operation['security'] as &$security) {
-                    if (isset($security['default'])) {
-                        if (null !== $firstSecurity) {
-                            // Replace placeholder with the first defined scheme
-                            $security[$firstSecurity] = $security['default'];
-                        }
-                        unset($security['default']);
-                    }
-                }
-                // Remove security entries that became empty after stripping 'default'
-                $operation['security'] = array_values(array_filter($operation['security']));
-                if (empty($operation['security'])) {
-                    unset($operation['security']);
-                }
-            }
+        if (!empty($protoComponents['securitySchemes'])) {
+            $components['securitySchemes'] = $protoComponents['securitySchemes'];
         }
 
-        return $paths;
-    }
+        $components['schemas'] = array_merge(
+            $components['schemas'] ?? [],
+            $protoComponents['schemas'] ?? [],
+        );
 
-    private function buildComponents(array $protoData): array
-    {
-        $excludedIds = $this->operationRegistry->getExcludedComponentIds();
-        $components = $this->componentRegistry->getAll($excludedIds);
-
-        $securitySchemes = $protoData['components']['securitySchemes'] ?? [];
-        if (!empty($securitySchemes)) {
-            $components['securitySchemes'] = $securitySchemes;
-        }
-
-        $schemas = $protoData['components']['schemas'] ?? [];
-        $components['schemas'] = array_merge($components['schemas'] ?? [], $schemas);
-
-        $responses = $protoData['components']['responses'] ?? [];
-        if (!empty($responses)) {
-            $components['responses'] = $responses;
+        if (!empty($protoComponents['responses'])) {
+            $components['responses'] = $protoComponents['responses'];
         }
 
         return $components;

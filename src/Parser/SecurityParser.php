@@ -10,6 +10,9 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 class SecurityParser implements OperationParserInterface
 {
+    /** Placeholder replaced by DocumentBuilder with the first proto.yaml securityScheme name. */
+    public const SECURITY_PLACEHOLDER = 'default';
+
     public function supports(object $attribute): bool
     {
         return $attribute instanceof ReflectionAttribute
@@ -19,7 +22,7 @@ class SecurityParser implements OperationParserInterface
     public function parse(Model $model, object $attribute): Model
     {
         if (empty($model->security)) {
-            $model->security['default'] = [];
+            $model->security[self::SECURITY_PLACEHOLDER] = [];
         }
 
         return $model;

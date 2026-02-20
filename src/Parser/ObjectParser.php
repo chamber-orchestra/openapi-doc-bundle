@@ -4,12 +4,8 @@ declare(strict_types=1);
 
 namespace ChamberOrchestra\OpenApiDocBundle\Parser;
 
-use ChamberOrchestra\OpenApiDocBundle\Describer\DescriberInterface;
-use ChamberOrchestra\OpenApiDocBundle\Exception\DescriberException;
 use ChamberOrchestra\OpenApiDocBundle\Model\Component;
 use ChamberOrchestra\OpenApiDocBundle\Model\Model;
-use ChamberOrchestra\OpenApiDocBundle\Model\Property;
-use ChamberOrchestra\OpenApiDocBundle\Utils\TypeConverter;
 use ChamberOrchestra\ViewBundle\View\ViewInterface;
 use ReflectionClass;
 use ReflectionNamedType;
@@ -20,8 +16,7 @@ class ObjectParser implements ComponentParserInterface
 {
     public function __construct(
         private PropertyParser $parser,
-        private TypeConverter $typeConverter,
-        private DescriberInterface $describer,
+        private PublicPropertyParser $publicPropertyParser,
     ) {
     }
 
@@ -37,42 +32,16 @@ class ObjectParser implements ComponentParserInterface
     {
         /* @var Component $model */
         /* @var ReflectionClass $reflection */
-        $model->id = $reflection->getShortName();
+        $model->id  = $reflection->getShortName();
         $parameters = [];
-        $required = [];
+        $required   = [];
 
         foreach ($reflection->getProperties() as $property) {
             $reflectionType = $property->getType();
-            $typeName = $reflectionType instanceof ReflectionNamedType ? $reflectionType->getName() : null;
+            $typeName       = $reflectionType instanceof ReflectionNamedType ? $reflectionType->getName() : null;
 
-            if (null === $typeName) {
-                $parameter = Property::factory($property->getName(), 'string');
-            } else {
-                $openApiType = $this->typeConverter->toOpenApiType($typeName);
-                if (null === $openApiType) {
-                    if ($openApiProperty = $this->typeConverter->toOpenApiProperty($typeName)) {
-                        $parameter = Property::factory($property->getName(), $openApiProperty['type']);
-                        if (isset($openApiProperty['format'])) {
-                            $parameter->format = $openApiProperty['format'];
-                        }
-                        if (!empty($openApiProperty['enum'])) {
-                            $parameter->enum = $openApiProperty['enum'];
-                        }
-                    } else {
-                        try {
-                            $child = $this->describer->describe($typeName);
-                            $parameter = Property::factory($property->getName(), 'object');
-                            $parameter->ref = $child;
-                        } catch (DescriberException $e) {
-                            $parameter = Property::factory($property->getName(), 'string');
-                        }
-                    }
-                } else {
-                    $parameter = Property::factory($property->getName(), $openApiType);
-                }
-            }
-
-            $parameter = $this->parser->parse($parameter, $property);
+            $parameter  = $this->publicPropertyParser->build($property->getName(), $typeName, $model);
+            $parameter  = $this->parser->parse($parameter, $property);
             $parameters[] = $parameter;
 
             $isRequired = ($reflectionType instanceof ReflectionNamedType && !$reflectionType->allowsNull())
@@ -83,7 +52,7 @@ class ObjectParser implements ComponentParserInterface
         }
 
         $model->properties = $parameters;
-        $model->required = $required;
+        $model->required   = $required;
 
         return $model;
     }
