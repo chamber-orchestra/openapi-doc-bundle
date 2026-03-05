@@ -15,7 +15,7 @@ class TextTypeHandler extends AbstractFormTypeHandler
 {
     public function supports(string $blockPrefix): bool
     {
-        return 'text' === $blockPrefix;
+        return 'text' === $blockPrefix || 'email' === $blockPrefix;
     }
 
     public function handle(Property $property, FormConfigInterface $config): void
