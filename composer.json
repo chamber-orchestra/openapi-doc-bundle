@@ -1,0 +1,75 @@
+{
+  "name": "chamber-orchestra/openapi-doc-bundle",
+  "type": "symfony-bundle",
+  "description": "Symfony bundle that auto-generates OpenAPI 3.0.1 documentation for Action-Domain-Responder (ADR) pattern applications by scanning #[Operation] and #[Route] attributes.",
+  "keywords": [
+    "symfony",
+    "bundle",
+    "openapi",
+    "swagger",
+    "api",
+    "documentation",
+    "adr",
+    "action-domain-responder",
+    "rest",
+    "generator",
+    "attributes",
+    "php8.5"
+  ],
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Andrew Lukin",
+      "email": "lukin.andrej@gmail.com",
+      "homepage": "https://github.com/wtorsi",
+      "role": "Developer"
+    },
+    {
+      "name": "Girchenko Mikhail",
+      "email": "girchenkomikhail@gmail.com",
+      "homepage": "https://github.com/baldrys-ed",
+      "role": "Developer"
+    }
+  ],
+  "require": {
+    "php": "^8.5",
+    "ext-json": "*",
+    "chamber-orchestra/view-bundle": "^8.0",
+    "symfony/config": "^8.0",
+    "symfony/console": "^8.0",
+    "symfony/dependency-injection": "^8.0",
+    "symfony/form": "^8.0",
+    "symfony/http-kernel": "^8.0",
+    "symfony/routing": "^8.0",
+    "symfony/security-http": "^8.0",
+    "symfony/validator": "^8.0",
+    "symfony/yaml": "^8.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11.0",
+    "symfony/uid": "^8.0"
+  },
+  "suggest": {
+    "symfony/uid": "Required to map Uuid/Ulid properties to { type: string, format: uuid } in generated schemas."
+  },
+  "autoload": {
+    "psr-4": {
+      "ChamberOrchestra\\OpenApiDocBundle\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "ChamberOrchestra\\OpenApiDocBundle\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "vendor/bin/phpunit",
+    "test:unit": "vendor/bin/phpunit --testsuite Unit",
+    "test:integration": "vendor/bin/phpunit --testsuite Integrational"
+  },
+  "config": {
+    "allow-plugins": {
+      "symfony/runtime": true
+    }
+  }
+}
