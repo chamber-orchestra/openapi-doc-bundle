@@ -30,6 +30,8 @@ class OperationParser implements OperationParserInterface
         /* @var ReflectionAttribute $attribute */
         $instance = $attribute->newInstance();
         $model->description = $instance->description;
+        $model->requestContentType = $instance->requestContentType;
+        $model->responseContentType = $instance->responseContentType;
 
         $request = $instance->request;
         $requestModel = null;

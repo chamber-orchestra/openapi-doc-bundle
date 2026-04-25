@@ -27,6 +27,16 @@ class TextTypeHandlerTest extends TestCase
         self::assertTrue($this->handler->supports('text'));
     }
 
+    public function testSupportsTextLikeBlockPrefixes(): void
+    {
+        self::assertTrue($this->handler->supports('email'));
+        self::assertTrue($this->handler->supports('textarea'));
+        self::assertTrue($this->handler->supports('search'));
+        self::assertTrue($this->handler->supports('url'));
+        self::assertTrue($this->handler->supports('tel'));
+        self::assertTrue($this->handler->supports('color'));
+    }
+
     public function testDoesNotSupportOtherPrefixes(): void
     {
         self::assertFalse($this->handler->supports('integer'));

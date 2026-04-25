@@ -48,10 +48,11 @@ class OpenApiSerializer
             }
 
             $responses = [];
+            $defaultResponseContent = $operation->responseContentType ?? 'application/json';
             foreach ($operation->responses as $status => $response) {
                 if ($response instanceof Component) {
                     $httpStatus = (string) ($response->status ?? 200);
-                    $content    = $response->headers['Content-Type'] ?? 'application/json';
+                    $content    = $response->headers['Content-Type'] ?? $defaultResponseContent;
                     $responses[$httpStatus]['description']                          = $response->id ?? 'Successful response';
                     $responses[$httpStatus]['content'][$content]['schema']['$ref']  = '#/components/schemas/'.$response->id;
                 } else {
@@ -67,7 +68,8 @@ class OpenApiSerializer
                         $pathData['parameters'] = array_merge($pathData['parameters'] ?? [], $queryParams);
                     }
                 } else {
-                    $pathData['requestBody']['content']['application/json']['schema']['$ref'] =
+                    $requestContentType = $operation->requestContentType ?? 'application/json';
+                    $pathData['requestBody']['content'][$requestContentType]['schema']['$ref'] =
                         '#/components/schemas/'.$operation->request->id;
                 }
             }

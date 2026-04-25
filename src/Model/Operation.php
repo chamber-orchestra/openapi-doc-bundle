@@ -15,4 +15,9 @@ class Operation extends Model
     public array $security = [];
     public array $responses = [];
 
+    /** Override for requestBody content type (multipart/form-data, etc.). Null = application/json. */
+    public ?string $requestContentType = null;
+
+    /** Override for success response content type (text/csv, application/pdf, etc.). Null = application/json. */
+    public ?string $responseContentType = null;
 }
