@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ChamberOrchestra\OpenApiDocBundle\Serializer;
 
+use ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape;
 use ChamberOrchestra\OpenApiDocBundle\Model\Component;
 use ChamberOrchestra\OpenApiDocBundle\Model\Operation;
 use ChamberOrchestra\OpenApiDocBundle\Model\Property;
@@ -17,15 +18,37 @@ use function in_array;
 class OpenApiSerializer
 {
     /**
+     * Schema name of the shared pagination metadata block. Must exist in `proto.yaml`
+     * under `components.schemas` whenever an operation uses
+     * {@see ResponseShape::PAGINATED_LIST}.
+     */
+    public const PAGINATION_METADATA_SCHEMA = 'PaginationMetadata';
+
+    /**
      * Serialize operations into an OpenAPI `paths` structure.
      *
-     * @param Operation[]  $operations
-     * @param string|null  $firstSecurityScheme  Name of the first proto.yaml securityScheme,
-     *                                            used to resolve the 'default' placeholder.
+     * @param Operation[]            $operations
+     * @param string|null            $firstSecurityScheme  Name of the first proto.yaml securityScheme,
+     *                                                     used to resolve the 'default' placeholder.
+     * @param array<string, string>  $autoResponses        Status code → proto response name. The
+     *                                                     bundle auto-injects these refs:
+     *                                                     401/403 for security-protected operations,
+     *                                                     422 for operations with form bodies,
+     *                                                     404 for operations with path parameters.
+     *                                                     Existing explicit responses are never
+     *                                                     overwritten.
+     * @param string[]               $protoSchemaNames     Names of schemas declared in proto.yaml.
+     *                                                     Required to validate that operations using
+     *                                                     PAGINATED_LIST have access to
+     *                                                     `PaginationMetadata`.
      * @return array{0: array, 1: string[]}  [paths, excludedComponentIds]
      */
-    public function serializePaths(array $operations, ?string $firstSecurityScheme): array
-    {
+    public function serializePaths(
+        array $operations,
+        ?string $firstSecurityScheme,
+        array $autoResponses = [],
+        array $protoSchemaNames = [],
+    ): array {
         $paths       = [];
         $excludedIds = [];
 
@@ -48,12 +71,18 @@ class OpenApiSerializer
             }
 
             $responses = [];
+            $defaultResponseContent = $operation->responseContentType ?? 'application/json';
             foreach ($operation->responses as $status => $response) {
                 if ($response instanceof Component) {
                     $httpStatus = (string) ($response->status ?? 200);
-                    $content    = $response->headers['Content-Type'] ?? 'application/json';
-                    $responses[$httpStatus]['description']                          = $response->id ?? 'Successful response';
-                    $responses[$httpStatus]['content'][$content]['schema']['$ref']  = '#/components/schemas/'.$response->id;
+                    $content    = $response->headers['Content-Type'] ?? $defaultResponseContent;
+                    $responses[$httpStatus]['description']                = $response->id ?? 'Successful response';
+                    $responses[$httpStatus]['content'][$content]['schema'] = $this->buildResponseSchema(
+                        $response,
+                        $operation->responseShape,
+                        $operation->id,
+                        $protoSchemaNames,
+                    );
                 } else {
                     $responses[(string) $status]['$ref'] = '#/components/responses/'.$response;
                 }
@@ -67,11 +96,45 @@ class OpenApiSerializer
                         $pathData['parameters'] = array_merge($pathData['parameters'] ?? [], $queryParams);
                     }
                 } else {
-                    $pathData['requestBody']['content']['application/json']['schema']['$ref'] =
+                    $requestContentType = $operation->requestContentType ?? 'application/json';
+                    $pathData['requestBody']['content'][$requestContentType]['schema']['$ref'] =
                         '#/components/schemas/'.$operation->request->id;
                 }
             }
 
+            // For cursor-paginated endpoints, auto-inject `cursor` if not already present.
+            // `cursor` is part of the wire contract for ResponseShape::PAGINATED_LIST — without
+            // it the schema is incomplete regardless of whether the action uses a form or not.
+            // `limit` is NOT auto-injected: some actions hardcode the page size and ignore a
+            // client-supplied limit; if the form already declares limit it will appear via the
+            // query-params expansion above; otherwise documenting it would mislead clients.
+            if ($operation->responseShape === \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST) {
+                $existing = array_column($pathData['parameters'] ?? [], 'name');
+                if (!in_array('cursor', $existing, true)) {
+                    $pathData['parameters'][] = [
+                        'name'        => 'cursor',
+                        'in'          => 'query',
+                        'required'    => false,
+                        'description' => 'Pagination cursor from the previous response metadata.next. Omit to fetch the first page.',
+                        'schema'      => ['type' => 'string'],
+                    ];
+                }
+            }
+
+            // Merge explicitly declared query parameters (params read directly from Request,
+            // not via a form — e.g. forAll, installationId, search on non-form endpoints).
+            foreach ($operation->queryParameters as $name => $paramSpec) {
+                $param = array_merge(
+                    ['name' => $name, 'in' => 'query', 'required' => false],
+                    $paramSpec,
+                );
+                if (!isset($param['schema'])) {
+                    $param['schema'] = ['type' => 'string'];
+                }
+                $pathData['parameters'][] = $param;
+            }
+
+            $isProtected = false;
             if (!empty($security = $operation->security)) {
                 $resolved = $security;
                 if (isset($resolved[SecurityParser::SECURITY_PLACEHOLDER])) {
@@ -82,14 +145,132 @@ class OpenApiSerializer
                 }
                 if (!empty($resolved)) {
                     $pathData['security'] = [$resolved];
+                    $isProtected = true;
                 }
             }
+
+            // Public actions (no #[IsGranted]) get an explicit empty security requirement, so
+            // OpenAPI clients know auth is not required instead of inheriting a global default.
+            if (!$isProtected) {
+                $pathData['security'] = [];
+            }
+
+            // Auto-inject conventional 4xx response refs when proto.yaml defines them and the
+            // operation hasn't already documented that status code explicitly.
+            $this->injectAutoResponses($responses, $operation, $autoResponses, $isProtected);
 
             $pathData['responses'] = $responses;
             $paths[$operation->path][strtolower($operation->method)] = $pathData;
         }
 
         return [$paths, $excludedIds];
+    }
+
+    /**
+     * @param array<string, mixed>   $responses     Mutated in place.
+     * @param array<string, string>  $autoResponses Status → proto response name.
+     */
+    private function injectAutoResponses(array &$responses, Operation $operation, array $autoResponses, bool $isProtected): void
+    {
+        if ([] === $autoResponses) {
+            return;
+        }
+
+        $hasForm = null !== $operation->request;
+        $hasPathParam = 1 === preg_match('/\{[^}]+\}/', $operation->path);
+
+        $needed = [];
+        if ($isProtected) {
+            $needed[] = '401';
+            $needed[] = '403';
+        }
+        // 422 is injected whenever a form is present, regardless of HTTP verb.
+        // GET/HEAD forms (query-param validation via GetWithFormAction) can also return 422
+        // when the submitted query parameters fail form validation.
+        if ($hasForm) {
+            $needed[] = '422';
+        }
+        if ($hasPathParam) {
+            $needed[] = '404';
+        }
+
+        foreach ($needed as $status) {
+            if (isset($responses[$status]) || !isset($autoResponses[$status])) {
+                continue;
+            }
+            $responses[$status] = ['$ref' => '#/components/responses/'.$autoResponses[$status]];
+        }
+    }
+
+    /**
+     * Build the OpenAPI schema for a 2xx success payload, applying the {@see ResponseShape}
+     * envelope around the entity component.
+     *
+     * The project's view layer (chamber-orchestra/view-bundle) wraps every successful response
+     * in `{"data": ...}`. The shape parameter picks the wrapper:
+     *
+     *  - ITEM (default)    → `{"data": {<entity>}}`
+     *  - LIST              → `{"data": [<entity>, ...]}`
+     *  - PAGINATED_LIST    → `{"data": [<entity>, ...], "metadata": {<PaginationMetadata>}}`
+     *
+     * @param string[] $protoSchemaNames Names of schemas declared in proto.yaml — used to
+     *                                   verify that PAGINATED_LIST has access to the shared
+     *                                   {@see self::PAGINATION_METADATA_SCHEMA} schema.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildResponseSchema(
+        Component $entity,
+        ?ResponseShape $shape,
+        ?string $operationId,
+        array $protoSchemaNames,
+    ): array {
+        $shape ??= ResponseShape::ITEM;
+        $entityRef = ['$ref' => '#/components/schemas/'.$entity->id];
+
+        return match ($shape) {
+            ResponseShape::ITEM => [
+                'type' => 'object',
+                'properties' => ['data' => $entityRef],
+                'required' => ['data'],
+            ],
+            ResponseShape::LIST => [
+                'type' => 'object',
+                'properties' => [
+                    'data' => ['type' => 'array', 'items' => $entityRef],
+                ],
+                'required' => ['data'],
+            ],
+            ResponseShape::PAGINATED_LIST => $this->buildPaginatedSchema($entityRef, $operationId, $protoSchemaNames),
+        };
+    }
+
+    /**
+     * @param array{$ref: string} $entityRef
+     * @param string[]            $protoSchemaNames
+     *
+     * @return array<string, mixed>
+     */
+    private function buildPaginatedSchema(array $entityRef, ?string $operationId, array $protoSchemaNames): array
+    {
+        if (!in_array(self::PAGINATION_METADATA_SCHEMA, $protoSchemaNames, true)) {
+            throw new \LogicException(\sprintf(
+                'Operation "%s" declares ResponseShape::PAGINATED_LIST but proto.yaml does not '
+                .'define a `components.schemas.%s` schema. Add it to proto.yaml or change the '
+                .'response shape.',
+                $operationId ?? '(unknown)',
+                self::PAGINATION_METADATA_SCHEMA,
+            ));
+        }
+
+        return [
+            'type' => 'object',
+            'properties' => [
+                'data' => ['type' => 'array', 'items' => $entityRef],
+                'metadata' => ['$ref' => '#/components/schemas/'.self::PAGINATION_METADATA_SCHEMA],
+            ],
+            'required' => ['data', 'metadata'],
+        ];
     }
 
     /**

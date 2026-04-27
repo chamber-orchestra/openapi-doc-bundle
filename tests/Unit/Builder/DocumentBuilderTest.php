@@ -151,8 +151,10 @@ class DocumentBuilderTest extends TestCase
         $result = $this->builder->build();
         $op = $result['paths']['/secured']['get'];
 
-        // 'default' is a placeholder — stripped when no securitySchemes are defined
-        self::assertArrayNotHasKey('security', $op);
+        // The 'default' placeholder is stripped when proto.yaml defines no securitySchemes;
+        // the operation falls back to public (`security: []`) so tooling and clients see an
+        // explicit auth declaration rather than inheriting a global default.
+        self::assertSame([], $op['security']);
     }
 
     public function testProtoSchemasAreMergedWithGeneratedOnes(): void

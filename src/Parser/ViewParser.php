@@ -43,10 +43,18 @@ class ViewParser implements ComponentParserInterface
         $status = Response::HTTP_OK;
         $headers = ['Content-Type' => 'application/json'];
 
+        // Reading the canonical status/headers from a ResponseView requires instantiating it,
+        // but views often declare required constructor arguments (e.g. payload fields, status).
+        // Fall back to defaults if instantiation fails — the resulting schema still describes
+        // the view's properties; only the metadata (HTTP status, content-type) is lost.
         if (in_array(ResponseViewInterface::class, $item->getInterfaceNames())) {
-            $instance = $item->newInstance();
-            $status = $item->getMethod('getStatus')->invoke($instance);
-            $headers = $item->getMethod('getHeaders')->invoke($instance);
+            try {
+                $instance = $item->newInstance();
+                $status = $item->getMethod('getStatus')->invoke($instance);
+                $headers = $item->getMethod('getHeaders')->invoke($instance);
+            } catch (\ArgumentCountError | \TypeError) {
+                // View has required constructor arguments — keep defaults.
+            }
         }
 
         $model->id = $item->getShortName();
@@ -77,7 +85,10 @@ class ViewParser implements ComponentParserInterface
 
         $parameters = [];
         $required = [];
-        foreach ($item->getProperties() as $property) {
+        // Only public properties are part of the public API contract — protected/private
+        // fields belong to the view's internals (status, headers on ResponseView etc.) and
+        // must not leak into the OpenAPI schema.
+        foreach ($item->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
             $parameter = $this->buildProperty($property, $model);
             $parameter = $this->parser->parse($parameter, $property);
             $parameters[] = $parameter;

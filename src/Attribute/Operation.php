@@ -9,7 +9,35 @@ use Attribute;
 #[Attribute(Attribute::TARGET_CLASS)]
 class Operation
 {
-    public function __construct(public ?string $description = null, public ?string $request = null, public array $responses = [], public array $security = [])
-    {
+    /**
+     * @param string|null        $requestContentType  Override the requestBody content type. Defaults to
+     *                                                `application/json`. Useful for multipart/form-data
+     *                                                uploads where the form contains a `FileType` field.
+     * @param string|null        $responseContentType Override the success response content type.
+     *                                                Defaults to `application/json`. Useful for
+     *                                                `text/csv` exports, PDF/binary downloads, etc.
+     * @param ResponseShape|null $responseShape       Transport shape of the 2xx success payload.
+     *                                                Defaults to {@see ResponseShape::ITEM} which means
+     *                                                the action returns a single entity wrapped in
+     *                                                `{"data": ...}`. Use {@see ResponseShape::LIST}
+     *                                                for actions returning `IterableView` and
+     *                                                {@see ResponseShape::PAGINATED_LIST} for
+     *                                                `PaginatedView` (cursor pagination).
+     * @param array<string, array<string, mixed>> $queryParameters Explicit query parameters for actions that
+     *                                                read query-string values directly from Request without
+     *                                                using a form (e.g. `forAll`, `installationId`).
+     *                                                Each entry is a partial OpenAPI Parameter Object:
+     *                                                `['forAll' => ['schema' => ['type' => 'string'], 'required' => false]]`
+     */
+    public function __construct(
+        public ?string $description = null,
+        public ?string $request = null,
+        public array $responses = [],
+        public array $security = [],
+        public ?string $requestContentType = null,
+        public ?string $responseContentType = null,
+        public ?ResponseShape $responseShape = null,
+        public array $queryParameters = [],
+    ) {
     }
 }

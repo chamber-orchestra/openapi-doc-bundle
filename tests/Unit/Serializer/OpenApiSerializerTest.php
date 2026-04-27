@@ -207,8 +207,149 @@ class OpenApiSerializerTest extends TestCase
 
         [$paths] = $this->serializer->serializePaths([$op], null);
 
-        $responses = $paths['/users']['get']['responses'];
-        self::assertSame('#/components/schemas/UserView', $responses['200']['content']['application/json']['schema']['$ref']);
+        // ITEM is the default ResponseShape — payload is wrapped in `{"data": <entity>}`
+        // matching ViewSubscriber's DataView envelope.
+        $schema = $paths['/users']['get']['responses']['200']['content']['application/json']['schema'];
+        self::assertSame('object', $schema['type']);
+        self::assertSame('#/components/schemas/UserView', $schema['properties']['data']['$ref']);
+        self::assertSame(['data'], $schema['required']);
+    }
+
+    public function testResponseShapeListWrapsEntityInArray(): void
+    {
+        $response         = new Component();
+        $response->id     = 'PointTransactionView';
+        $response->status = 200;
+
+        $op                = new Operation();
+        $op->id            = 'awardPoints';
+        $op->path          = '/points';
+        $op->method        = 'POST';
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::LIST;
+
+        [$paths] = $this->serializer->serializePaths([$op], null);
+        $schema = $paths['/points']['post']['responses']['200']['content']['application/json']['schema'];
+
+        self::assertSame('object', $schema['type']);
+        self::assertSame('array', $schema['properties']['data']['type']);
+        self::assertSame('#/components/schemas/PointTransactionView', $schema['properties']['data']['items']['$ref']);
+        self::assertSame(['data'], $schema['required']);
+    }
+
+    public function testResponseShapePaginatedListEmitsDataAndMetadataRefs(): void
+    {
+        $response         = new Component();
+        $response->id     = 'FeedItemView';
+        $response->status = 200;
+
+        $op                = new Operation();
+        $op->id            = 'feed';
+        $op->path          = '/feed';
+        $op->method        = 'GET';
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+
+        [$paths] = $this->serializer->serializePaths([$op], null, [], ['PaginationMetadata']);
+        $schema = $paths['/feed']['get']['responses']['200']['content']['application/json']['schema'];
+
+        self::assertSame('object', $schema['type']);
+        self::assertSame('array', $schema['properties']['data']['type']);
+        self::assertSame('#/components/schemas/FeedItemView', $schema['properties']['data']['items']['$ref']);
+        self::assertSame('#/components/schemas/PaginationMetadata', $schema['properties']['metadata']['$ref']);
+        self::assertSame(['data', 'metadata'], $schema['required']);
+    }
+
+    public function testResponseShapePaginatedListWithoutProtoSchemaThrows(): void
+    {
+        $response         = new Component();
+        $response->id     = 'FeedItemView';
+        $response->status = 200;
+
+        $op                = new Operation();
+        $op->id            = 'feed';
+        $op->path          = '/feed';
+        $op->method        = 'GET';
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('PaginationMetadata');
+
+        // proto.yaml does not declare PaginationMetadata — this must fail loudly so
+        // the developer adds it instead of getting a silently broken schema.
+        $this->serializer->serializePaths([$op], null, [], []);
+    }
+
+    public function testPaginatedListAutoInjectsCursorParam(): void
+    {
+        $response          = new Component();
+        $response->id      = 'FeedItemView';
+        $response->status  = 200;
+
+        $op                = new Operation();
+        $op->id            = 'feed';
+        $op->path          = '/feed';
+        $op->method        = 'GET';
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+
+        [$paths] = $this->serializer->serializePaths([$op], null, [], ['PaginationMetadata']);
+        $params = $paths['/feed']['get']['parameters'] ?? [];
+        $names  = array_column($params, 'name');
+
+        self::assertContains('cursor', $names, 'cursor must be auto-injected for PAGINATED_LIST');
+
+        $cursorParam = $params[array_search('cursor', $names)];
+        self::assertSame('query', $cursorParam['in']);
+        self::assertFalse($cursorParam['required']);
+    }
+
+    public function testPaginatedListDoesNotAutoInjectLimit(): void
+    {
+        $response          = new Component();
+        $response->id      = 'FeedItemView';
+        $response->status  = 200;
+
+        $op                = new Operation();
+        $op->id            = 'feed';
+        $op->path          = '/feed';
+        $op->method        = 'GET';
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+
+        [$paths] = $this->serializer->serializePaths([$op], null, [], ['PaginationMetadata']);
+        $names = array_column($paths['/feed']['get']['parameters'] ?? [], 'name');
+
+        self::assertNotContains('limit', $names, 'limit must NOT be auto-injected — only auto-inject when form declares it');
+    }
+
+    public function testPaginatedListDoesNotDuplicateCursorFromForm(): void
+    {
+        $form             = new Component();
+        $form->id         = 'FeedFilterForm';
+        $form->properties = [
+            Property::factory('cursor', 'string'),
+            Property::factory('limit', 'integer'),
+        ];
+        $form->required   = [];
+
+        $response          = new Component();
+        $response->id      = 'FeedItemView';
+        $response->status  = 200;
+
+        $op                = new Operation();
+        $op->id            = 'feed';
+        $op->path          = '/feed';
+        $op->method        = 'GET';
+        $op->request       = $form;
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+
+        [$paths] = $this->serializer->serializePaths([$op], null, [], ['PaginationMetadata']);
+        $names = array_column($paths['/feed']['get']['parameters'] ?? [], 'name');
+
+        self::assertCount(1, array_keys($names, 'cursor'), 'cursor must appear exactly once even if form also declares it');
     }
 
     public function testOperationWithStringResponse(): void
@@ -264,6 +405,30 @@ class OpenApiSerializerTest extends TestCase
         self::assertContains('SearchForm', $excludedIds);
     }
 
+    public function testGetFormInjectsValidationErrorLike422(): void
+    {
+        $form             = new Component();
+        $form->id         = 'FeedFilterForm';
+        $form->properties = [Property::factory('scope', 'string')];
+        $form->required   = [];
+
+        $op          = new Operation();
+        $op->id      = 'feed';
+        $op->path    = '/feed';
+        $op->method  = 'GET';
+        $op->request = $form;
+        $op->security = [SecurityParser::SECURITY_PLACEHOLDER => []];
+
+        $auto = ['422' => 'ValidationError', '401' => 'UnauthorizedError', '403' => 'ForbiddenError'];
+
+        [$paths] = $this->serializer->serializePaths([$op], 'BearerAuth', $auto);
+        $responses = $paths['/feed']['get']['responses'];
+
+        // GET forms can also trigger 422 when query params fail validation
+        self::assertSame('#/components/responses/ValidationError', $responses['422']['$ref']);
+        self::assertSame('#/components/responses/UnauthorizedError', $responses['401']['$ref']);
+    }
+
     public function testSecurityPlaceholderResolvedToFirstScheme(): void
     {
         $op           = new Operation();
@@ -289,7 +454,75 @@ class OpenApiSerializerTest extends TestCase
 
         [$paths] = $this->serializer->serializePaths([$op], null);
 
-        self::assertArrayNotHasKey('security', $paths['/secured']['get']);
+        // The 'default' placeholder cannot be resolved without a scheme. Falling back to an
+        // explicit empty security requirement means the operation is treated as public, which
+        // matches OpenAPI semantics and satisfies tooling that requires `security` to be set
+        // on every operation (e.g. redocly's `security-defined` rule).
+        self::assertSame([], $paths['/secured']['get']['security']);
+    }
+
+    public function testAutoResponses4xxInjectedWhenProtoDefinesThem(): void
+    {
+        $form         = new Component();
+        $form->id     = 'CreateThingForm';
+
+        $op           = new Operation();
+        $op->id       = 'create';
+        $op->path     = '/things/{id}';
+        $op->method   = 'POST';
+        $op->security = [SecurityParser::SECURITY_PLACEHOLDER => []];
+        $op->request  = $form;
+
+        $auto = [
+            '401' => 'UnauthorizedError',
+            '403' => 'ForbiddenError',
+            '404' => 'NotFoundError',
+            '422' => 'ValidationError',
+        ];
+
+        [$paths] = $this->serializer->serializePaths([$op], 'BearerAuth', $auto);
+        $responses = $paths['/things/{id}']['post']['responses'];
+
+        self::assertSame('#/components/responses/UnauthorizedError', $responses['401']['$ref']);
+        self::assertSame('#/components/responses/ForbiddenError',    $responses['403']['$ref']);
+        self::assertSame('#/components/responses/NotFoundError',     $responses['404']['$ref']);
+        self::assertSame('#/components/responses/ValidationError',   $responses['422']['$ref']);
+    }
+
+    public function testAutoResponsesSkippedForUnprotectedOpWithoutFormOrPathParam(): void
+    {
+        $op         = new Operation();
+        $op->id     = 'health';
+        $op->path   = '/health';
+        $op->method = 'GET';
+
+        $auto = [
+            '401' => 'UnauthorizedError',
+            '403' => 'ForbiddenError',
+            '404' => 'NotFoundError',
+            '422' => 'ValidationError',
+        ];
+
+        [$paths] = $this->serializer->serializePaths([$op], null, $auto);
+
+        self::assertArrayNotHasKey('401', $paths['/health']['get']['responses']);
+        self::assertArrayNotHasKey('403', $paths['/health']['get']['responses']);
+        self::assertArrayNotHasKey('404', $paths['/health']['get']['responses']);
+        self::assertArrayNotHasKey('422', $paths['/health']['get']['responses']);
+    }
+
+    public function testAutoResponsesNeverOverwriteExplicit4xx(): void
+    {
+        $op         = new Operation();
+        $op->id     = 'login';
+        $op->path   = '/login';
+        $op->method = 'POST';
+        $op->responses = ['401' => 'CustomLoginFailure'];
+
+        [$paths] = $this->serializer->serializePaths([$op], null, ['401' => 'UnauthorizedError']);
+
+        // Explicit ref wins; auto-injection must not clobber the developer's choice.
+        self::assertSame('#/components/responses/CustomLoginFailure', $paths['/login']['post']['responses']['401']['$ref']);
     }
 
     public function testMethodIsLowercased(): void
