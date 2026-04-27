@@ -289,7 +289,75 @@ class OpenApiSerializerTest extends TestCase
 
         [$paths] = $this->serializer->serializePaths([$op], null);
 
-        self::assertArrayNotHasKey('security', $paths['/secured']['get']);
+        // The 'default' placeholder cannot be resolved without a scheme. Falling back to an
+        // explicit empty security requirement means the operation is treated as public, which
+        // matches OpenAPI semantics and satisfies tooling that requires `security` to be set
+        // on every operation (e.g. redocly's `security-defined` rule).
+        self::assertSame([], $paths['/secured']['get']['security']);
+    }
+
+    public function testAutoResponses4xxInjectedWhenProtoDefinesThem(): void
+    {
+        $form         = new Component();
+        $form->id     = 'CreateThingForm';
+
+        $op           = new Operation();
+        $op->id       = 'create';
+        $op->path     = '/things/{id}';
+        $op->method   = 'POST';
+        $op->security = [SecurityParser::SECURITY_PLACEHOLDER => []];
+        $op->request  = $form;
+
+        $auto = [
+            '401' => 'UnauthorizedError',
+            '403' => 'ForbiddenError',
+            '404' => 'NotFoundError',
+            '422' => 'ValidationError',
+        ];
+
+        [$paths] = $this->serializer->serializePaths([$op], 'BearerAuth', $auto);
+        $responses = $paths['/things/{id}']['post']['responses'];
+
+        self::assertSame('#/components/responses/UnauthorizedError', $responses['401']['$ref']);
+        self::assertSame('#/components/responses/ForbiddenError',    $responses['403']['$ref']);
+        self::assertSame('#/components/responses/NotFoundError',     $responses['404']['$ref']);
+        self::assertSame('#/components/responses/ValidationError',   $responses['422']['$ref']);
+    }
+
+    public function testAutoResponsesSkippedForUnprotectedOpWithoutFormOrPathParam(): void
+    {
+        $op         = new Operation();
+        $op->id     = 'health';
+        $op->path   = '/health';
+        $op->method = 'GET';
+
+        $auto = [
+            '401' => 'UnauthorizedError',
+            '403' => 'ForbiddenError',
+            '404' => 'NotFoundError',
+            '422' => 'ValidationError',
+        ];
+
+        [$paths] = $this->serializer->serializePaths([$op], null, $auto);
+
+        self::assertArrayNotHasKey('401', $paths['/health']['get']['responses']);
+        self::assertArrayNotHasKey('403', $paths['/health']['get']['responses']);
+        self::assertArrayNotHasKey('404', $paths['/health']['get']['responses']);
+        self::assertArrayNotHasKey('422', $paths['/health']['get']['responses']);
+    }
+
+    public function testAutoResponsesNeverOverwriteExplicit4xx(): void
+    {
+        $op         = new Operation();
+        $op->id     = 'login';
+        $op->path   = '/login';
+        $op->method = 'POST';
+        $op->responses = ['401' => 'CustomLoginFailure'];
+
+        [$paths] = $this->serializer->serializePaths([$op], null, ['401' => 'UnauthorizedError']);
+
+        // Explicit ref wins; auto-injection must not clobber the developer's choice.
+        self::assertSame('#/components/responses/CustomLoginFailure', $paths['/login']['post']['responses']['401']['$ref']);
     }
 
     public function testMethodIsLowercased(): void

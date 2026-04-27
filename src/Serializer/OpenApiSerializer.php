@@ -19,12 +19,19 @@ class OpenApiSerializer
     /**
      * Serialize operations into an OpenAPI `paths` structure.
      *
-     * @param Operation[]  $operations
-     * @param string|null  $firstSecurityScheme  Name of the first proto.yaml securityScheme,
-     *                                            used to resolve the 'default' placeholder.
+     * @param Operation[]            $operations
+     * @param string|null            $firstSecurityScheme  Name of the first proto.yaml securityScheme,
+     *                                                     used to resolve the 'default' placeholder.
+     * @param array<string, string>  $autoResponses        Status code → proto response name. The
+     *                                                     bundle auto-injects these refs:
+     *                                                     401/403 for security-protected operations,
+     *                                                     422 for operations with form bodies,
+     *                                                     404 for operations with path parameters.
+     *                                                     Existing explicit responses are never
+     *                                                     overwritten.
      * @return array{0: array, 1: string[]}  [paths, excludedComponentIds]
      */
-    public function serializePaths(array $operations, ?string $firstSecurityScheme): array
+    public function serializePaths(array $operations, ?string $firstSecurityScheme, array $autoResponses = []): array
     {
         $paths       = [];
         $excludedIds = [];
@@ -74,6 +81,7 @@ class OpenApiSerializer
                 }
             }
 
+            $isProtected = false;
             if (!empty($security = $operation->security)) {
                 $resolved = $security;
                 if (isset($resolved[SecurityParser::SECURITY_PLACEHOLDER])) {
@@ -84,14 +92,59 @@ class OpenApiSerializer
                 }
                 if (!empty($resolved)) {
                     $pathData['security'] = [$resolved];
+                    $isProtected = true;
                 }
             }
+
+            // Public actions (no #[IsGranted]) get an explicit empty security requirement, so
+            // OpenAPI clients know auth is not required instead of inheriting a global default.
+            if (!$isProtected) {
+                $pathData['security'] = [];
+            }
+
+            // Auto-inject conventional 4xx response refs when proto.yaml defines them and the
+            // operation hasn't already documented that status code explicitly.
+            $this->injectAutoResponses($responses, $operation, $autoResponses, $isProtected);
 
             $pathData['responses'] = $responses;
             $paths[$operation->path][strtolower($operation->method)] = $pathData;
         }
 
         return [$paths, $excludedIds];
+    }
+
+    /**
+     * @param array<string, mixed>   $responses     Mutated in place.
+     * @param array<string, string>  $autoResponses Status → proto response name.
+     */
+    private function injectAutoResponses(array &$responses, Operation $operation, array $autoResponses, bool $isProtected): void
+    {
+        if ([] === $autoResponses) {
+            return;
+        }
+
+        $hasForm = null !== $operation->request;
+        $isWriteVerb = !in_array(strtoupper($operation->method), ['GET', 'DELETE', 'HEAD'], true);
+        $hasPathParam = 1 === preg_match('/\{[^}]+\}/', $operation->path);
+
+        $needed = [];
+        if ($isProtected) {
+            $needed[] = '401';
+            $needed[] = '403';
+        }
+        if ($hasForm && $isWriteVerb) {
+            $needed[] = '422';
+        }
+        if ($hasPathParam) {
+            $needed[] = '404';
+        }
+
+        foreach ($needed as $status) {
+            if (isset($responses[$status]) || !isset($autoResponses[$status])) {
+                continue;
+            }
+            $responses[$status] = ['$ref' => '#/components/responses/'.$autoResponses[$status]];
+        }
     }
 
     /**

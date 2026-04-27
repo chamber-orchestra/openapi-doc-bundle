@@ -17,6 +17,20 @@ class DocumentBuilder
     ) {
     }
 
+    /**
+     * Conventional names for shared 4xx responses defined in proto.yaml. When a name is found
+     * in proto's `components.responses`, the serializer auto-injects the matching status code
+     * into every operation that needs it (security-protected → 401/403, has form body → 422,
+     * has path parameter → 404). Names that don't exist in proto are skipped — keeps the
+     * bundle convention-over-configuration without hardcoding response shapes.
+     */
+    private const AUTO_RESPONSE_NAMES = [
+        '401' => 'UnauthorizedError',
+        '403' => 'ForbiddenError',
+        '404' => 'NotFoundError',
+        '422' => 'ValidationError',
+    ];
+
     public function build(
         array  $protoData = [],
         string $version = '1.0.0',
@@ -25,9 +39,18 @@ class DocumentBuilder
         $protoSchemes    = $protoData['components']['securitySchemes'] ?? [];
         $firstScheme     = !empty($protoSchemes) ? array_key_first($protoSchemes) : null;
 
+        $protoResponseNames = array_keys($protoData['components']['responses'] ?? []);
+        $autoResponses = [];
+        foreach (self::AUTO_RESPONSE_NAMES as $status => $name) {
+            if (in_array($name, $protoResponseNames, true)) {
+                $autoResponses[$status] = $name;
+            }
+        }
+
         [$paths, $excludedIds] = $this->serializer->serializePaths(
             $this->operationRegistry->getAll(),
             $firstScheme,
+            $autoResponses,
         );
 
         $components = $this->serializer->serializeComponents(
