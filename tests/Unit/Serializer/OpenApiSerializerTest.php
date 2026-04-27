@@ -281,6 +281,77 @@ class OpenApiSerializerTest extends TestCase
         $this->serializer->serializePaths([$op], null, [], []);
     }
 
+    public function testPaginatedListAutoInjectsCursorParam(): void
+    {
+        $response          = new Component();
+        $response->id      = 'FeedItemView';
+        $response->status  = 200;
+
+        $op                = new Operation();
+        $op->id            = 'feed';
+        $op->path          = '/feed';
+        $op->method        = 'GET';
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+
+        [$paths] = $this->serializer->serializePaths([$op], null, [], ['PaginationMetadata']);
+        $params = $paths['/feed']['get']['parameters'] ?? [];
+        $names  = array_column($params, 'name');
+
+        self::assertContains('cursor', $names, 'cursor must be auto-injected for PAGINATED_LIST');
+
+        $cursorParam = $params[array_search('cursor', $names)];
+        self::assertSame('query', $cursorParam['in']);
+        self::assertFalse($cursorParam['required']);
+    }
+
+    public function testPaginatedListDoesNotAutoInjectLimit(): void
+    {
+        $response          = new Component();
+        $response->id      = 'FeedItemView';
+        $response->status  = 200;
+
+        $op                = new Operation();
+        $op->id            = 'feed';
+        $op->path          = '/feed';
+        $op->method        = 'GET';
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+
+        [$paths] = $this->serializer->serializePaths([$op], null, [], ['PaginationMetadata']);
+        $names = array_column($paths['/feed']['get']['parameters'] ?? [], 'name');
+
+        self::assertNotContains('limit', $names, 'limit must NOT be auto-injected — only auto-inject when form declares it');
+    }
+
+    public function testPaginatedListDoesNotDuplicateCursorFromForm(): void
+    {
+        $form             = new Component();
+        $form->id         = 'FeedFilterForm';
+        $form->properties = [
+            Property::factory('cursor', 'string'),
+            Property::factory('limit', 'integer'),
+        ];
+        $form->required   = [];
+
+        $response          = new Component();
+        $response->id      = 'FeedItemView';
+        $response->status  = 200;
+
+        $op                = new Operation();
+        $op->id            = 'feed';
+        $op->path          = '/feed';
+        $op->method        = 'GET';
+        $op->request       = $form;
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+
+        [$paths] = $this->serializer->serializePaths([$op], null, [], ['PaginationMetadata']);
+        $names = array_column($paths['/feed']['get']['parameters'] ?? [], 'name');
+
+        self::assertCount(1, array_keys($names, 'cursor'), 'cursor must appear exactly once even if form also declares it');
+    }
+
     public function testOperationWithStringResponse(): void
     {
         $op            = new Operation();

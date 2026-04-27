@@ -102,8 +102,27 @@ class OpenApiSerializer
                 }
             }
 
+            // For cursor-paginated endpoints, auto-inject `cursor` if not already present.
+            // `cursor` is part of the wire contract for ResponseShape::PAGINATED_LIST — without
+            // it the schema is incomplete regardless of whether the action uses a form or not.
+            // `limit` is NOT auto-injected: some actions hardcode the page size and ignore a
+            // client-supplied limit; if the form already declares limit it will appear via the
+            // query-params expansion above; otherwise documenting it would mislead clients.
+            if ($operation->responseShape === \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST) {
+                $existing = array_column($pathData['parameters'] ?? [], 'name');
+                if (!in_array('cursor', $existing, true)) {
+                    $pathData['parameters'][] = [
+                        'name'        => 'cursor',
+                        'in'          => 'query',
+                        'required'    => false,
+                        'description' => 'Pagination cursor from the previous response metadata.next. Omit to fetch the first page.',
+                        'schema'      => ['type' => 'string'],
+                    ];
+                }
+            }
+
             // Merge explicitly declared query parameters (params read directly from Request,
-            // not via a form — e.g. forAll, installationId, cursor on non-form endpoints).
+            // not via a form — e.g. forAll, installationId, search on non-form endpoints).
             foreach ($operation->queryParameters as $name => $paramSpec) {
                 $param = array_merge(
                     ['name' => $name, 'in' => 'query', 'required' => false],
