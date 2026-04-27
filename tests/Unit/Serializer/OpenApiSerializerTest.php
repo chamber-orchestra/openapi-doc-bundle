@@ -334,6 +334,30 @@ class OpenApiSerializerTest extends TestCase
         self::assertContains('SearchForm', $excludedIds);
     }
 
+    public function testGetFormInjectsValidationErrorLike422(): void
+    {
+        $form             = new Component();
+        $form->id         = 'FeedFilterForm';
+        $form->properties = [Property::factory('scope', 'string')];
+        $form->required   = [];
+
+        $op          = new Operation();
+        $op->id      = 'feed';
+        $op->path    = '/feed';
+        $op->method  = 'GET';
+        $op->request = $form;
+        $op->security = [SecurityParser::SECURITY_PLACEHOLDER => []];
+
+        $auto = ['422' => 'ValidationError', '401' => 'UnauthorizedError', '403' => 'ForbiddenError'];
+
+        [$paths] = $this->serializer->serializePaths([$op], 'BearerAuth', $auto);
+        $responses = $paths['/feed']['get']['responses'];
+
+        // GET forms can also trigger 422 when query params fail validation
+        self::assertSame('#/components/responses/ValidationError', $responses['422']['$ref']);
+        self::assertSame('#/components/responses/UnauthorizedError', $responses['401']['$ref']);
+    }
+
     public function testSecurityPlaceholderResolvedToFirstScheme(): void
     {
         $op           = new Operation();

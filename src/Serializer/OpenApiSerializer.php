@@ -145,7 +145,6 @@ class OpenApiSerializer
         }
 
         $hasForm = null !== $operation->request;
-        $isWriteVerb = !in_array(strtoupper($operation->method), ['GET', 'DELETE', 'HEAD'], true);
         $hasPathParam = 1 === preg_match('/\{[^}]+\}/', $operation->path);
 
         $needed = [];
@@ -153,7 +152,10 @@ class OpenApiSerializer
             $needed[] = '401';
             $needed[] = '403';
         }
-        if ($hasForm && $isWriteVerb) {
+        // 422 is injected whenever a form is present, regardless of HTTP verb.
+        // GET/HEAD forms (query-param validation via GetWithFormAction) can also return 422
+        // when the submitted query parameters fail form validation.
+        if ($hasForm) {
             $needed[] = '422';
         }
         if ($hasPathParam) {
