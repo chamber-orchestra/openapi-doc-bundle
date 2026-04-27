@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ChamberOrchestra\OpenApiDocBundle\Serializer;
 
+use ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape;
 use ChamberOrchestra\OpenApiDocBundle\Model\Component;
 use ChamberOrchestra\OpenApiDocBundle\Model\Operation;
 use ChamberOrchestra\OpenApiDocBundle\Model\Property;
@@ -17,6 +18,13 @@ use function in_array;
 class OpenApiSerializer
 {
     /**
+     * Schema name of the shared pagination metadata block. Must exist in `proto.yaml`
+     * under `components.schemas` whenever an operation uses
+     * {@see ResponseShape::PAGINATED_LIST}.
+     */
+    public const PAGINATION_METADATA_SCHEMA = 'PaginationMetadata';
+
+    /**
      * Serialize operations into an OpenAPI `paths` structure.
      *
      * @param Operation[]            $operations
@@ -29,10 +37,18 @@ class OpenApiSerializer
      *                                                     404 for operations with path parameters.
      *                                                     Existing explicit responses are never
      *                                                     overwritten.
+     * @param string[]               $protoSchemaNames     Names of schemas declared in proto.yaml.
+     *                                                     Required to validate that operations using
+     *                                                     PAGINATED_LIST have access to
+     *                                                     `PaginationMetadata`.
      * @return array{0: array, 1: string[]}  [paths, excludedComponentIds]
      */
-    public function serializePaths(array $operations, ?string $firstSecurityScheme, array $autoResponses = []): array
-    {
+    public function serializePaths(
+        array $operations,
+        ?string $firstSecurityScheme,
+        array $autoResponses = [],
+        array $protoSchemaNames = [],
+    ): array {
         $paths       = [];
         $excludedIds = [];
 
@@ -60,8 +76,13 @@ class OpenApiSerializer
                 if ($response instanceof Component) {
                     $httpStatus = (string) ($response->status ?? 200);
                     $content    = $response->headers['Content-Type'] ?? $defaultResponseContent;
-                    $responses[$httpStatus]['description']                          = $response->id ?? 'Successful response';
-                    $responses[$httpStatus]['content'][$content]['schema']['$ref']  = '#/components/schemas/'.$response->id;
+                    $responses[$httpStatus]['description']                = $response->id ?? 'Successful response';
+                    $responses[$httpStatus]['content'][$content]['schema'] = $this->buildResponseSchema(
+                        $response,
+                        $operation->responseShape,
+                        $operation->id,
+                        $protoSchemaNames,
+                    );
                 } else {
                     $responses[(string) $status]['$ref'] = '#/components/responses/'.$response;
                 }
@@ -145,6 +166,77 @@ class OpenApiSerializer
             }
             $responses[$status] = ['$ref' => '#/components/responses/'.$autoResponses[$status]];
         }
+    }
+
+    /**
+     * Build the OpenAPI schema for a 2xx success payload, applying the {@see ResponseShape}
+     * envelope around the entity component.
+     *
+     * The project's view layer (chamber-orchestra/view-bundle) wraps every successful response
+     * in `{"data": ...}`. The shape parameter picks the wrapper:
+     *
+     *  - ITEM (default)    → `{"data": {<entity>}}`
+     *  - LIST              → `{"data": [<entity>, ...]}`
+     *  - PAGINATED_LIST    → `{"data": [<entity>, ...], "metadata": {<PaginationMetadata>}}`
+     *
+     * @param string[] $protoSchemaNames Names of schemas declared in proto.yaml — used to
+     *                                   verify that PAGINATED_LIST has access to the shared
+     *                                   {@see self::PAGINATION_METADATA_SCHEMA} schema.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildResponseSchema(
+        Component $entity,
+        ?ResponseShape $shape,
+        ?string $operationId,
+        array $protoSchemaNames,
+    ): array {
+        $shape ??= ResponseShape::ITEM;
+        $entityRef = ['$ref' => '#/components/schemas/'.$entity->id];
+
+        return match ($shape) {
+            ResponseShape::ITEM => [
+                'type' => 'object',
+                'properties' => ['data' => $entityRef],
+                'required' => ['data'],
+            ],
+            ResponseShape::LIST => [
+                'type' => 'object',
+                'properties' => [
+                    'data' => ['type' => 'array', 'items' => $entityRef],
+                ],
+                'required' => ['data'],
+            ],
+            ResponseShape::PAGINATED_LIST => $this->buildPaginatedSchema($entityRef, $operationId, $protoSchemaNames),
+        };
+    }
+
+    /**
+     * @param array{$ref: string} $entityRef
+     * @param string[]            $protoSchemaNames
+     *
+     * @return array<string, mixed>
+     */
+    private function buildPaginatedSchema(array $entityRef, ?string $operationId, array $protoSchemaNames): array
+    {
+        if (!in_array(self::PAGINATION_METADATA_SCHEMA, $protoSchemaNames, true)) {
+            throw new \LogicException(\sprintf(
+                'Operation "%s" declares ResponseShape::PAGINATED_LIST but proto.yaml does not '
+                .'define a `components.schemas.%s` schema. Add it to proto.yaml or change the '
+                .'response shape.',
+                $operationId ?? '(unknown)',
+                self::PAGINATION_METADATA_SCHEMA,
+            ));
+        }
+
+        return [
+            'type' => 'object',
+            'properties' => [
+                'data' => ['type' => 'array', 'items' => $entityRef],
+                'metadata' => ['$ref' => '#/components/schemas/'.self::PAGINATION_METADATA_SCHEMA],
+            ],
+            'required' => ['data', 'metadata'],
+        ];
     }
 
     /**

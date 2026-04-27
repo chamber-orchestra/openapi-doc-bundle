@@ -32,6 +32,7 @@ class OperationParser implements OperationParserInterface
         $model->description = $instance->description;
         $model->requestContentType = $instance->requestContentType;
         $model->responseContentType = $instance->responseContentType;
+        $model->responseShape = $instance->responseShape;
 
         $request = $instance->request;
         $requestModel = null;

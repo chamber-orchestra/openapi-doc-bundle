@@ -207,8 +207,78 @@ class OpenApiSerializerTest extends TestCase
 
         [$paths] = $this->serializer->serializePaths([$op], null);
 
-        $responses = $paths['/users']['get']['responses'];
-        self::assertSame('#/components/schemas/UserView', $responses['200']['content']['application/json']['schema']['$ref']);
+        // ITEM is the default ResponseShape — payload is wrapped in `{"data": <entity>}`
+        // matching ViewSubscriber's DataView envelope.
+        $schema = $paths['/users']['get']['responses']['200']['content']['application/json']['schema'];
+        self::assertSame('object', $schema['type']);
+        self::assertSame('#/components/schemas/UserView', $schema['properties']['data']['$ref']);
+        self::assertSame(['data'], $schema['required']);
+    }
+
+    public function testResponseShapeListWrapsEntityInArray(): void
+    {
+        $response         = new Component();
+        $response->id     = 'PointTransactionView';
+        $response->status = 200;
+
+        $op                = new Operation();
+        $op->id            = 'awardPoints';
+        $op->path          = '/points';
+        $op->method        = 'POST';
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::LIST;
+
+        [$paths] = $this->serializer->serializePaths([$op], null);
+        $schema = $paths['/points']['post']['responses']['200']['content']['application/json']['schema'];
+
+        self::assertSame('object', $schema['type']);
+        self::assertSame('array', $schema['properties']['data']['type']);
+        self::assertSame('#/components/schemas/PointTransactionView', $schema['properties']['data']['items']['$ref']);
+        self::assertSame(['data'], $schema['required']);
+    }
+
+    public function testResponseShapePaginatedListEmitsDataAndMetadataRefs(): void
+    {
+        $response         = new Component();
+        $response->id     = 'FeedItemView';
+        $response->status = 200;
+
+        $op                = new Operation();
+        $op->id            = 'feed';
+        $op->path          = '/feed';
+        $op->method        = 'GET';
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+
+        [$paths] = $this->serializer->serializePaths([$op], null, [], ['PaginationMetadata']);
+        $schema = $paths['/feed']['get']['responses']['200']['content']['application/json']['schema'];
+
+        self::assertSame('object', $schema['type']);
+        self::assertSame('array', $schema['properties']['data']['type']);
+        self::assertSame('#/components/schemas/FeedItemView', $schema['properties']['data']['items']['$ref']);
+        self::assertSame('#/components/schemas/PaginationMetadata', $schema['properties']['metadata']['$ref']);
+        self::assertSame(['data', 'metadata'], $schema['required']);
+    }
+
+    public function testResponseShapePaginatedListWithoutProtoSchemaThrows(): void
+    {
+        $response         = new Component();
+        $response->id     = 'FeedItemView';
+        $response->status = 200;
+
+        $op                = new Operation();
+        $op->id            = 'feed';
+        $op->path          = '/feed';
+        $op->method        = 'GET';
+        $op->responses     = [200 => $response];
+        $op->responseShape = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('PaginationMetadata');
+
+        // proto.yaml does not declare PaginationMetadata — this must fail loudly so
+        // the developer adds it instead of getting a silently broken schema.
+        $this->serializer->serializePaths([$op], null, [], []);
     }
 
     public function testOperationWithStringResponse(): void

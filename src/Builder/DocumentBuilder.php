@@ -47,10 +47,13 @@ class DocumentBuilder
             }
         }
 
+        $protoSchemaNames = array_keys($protoData['components']['schemas'] ?? []);
+
         [$paths, $excludedIds] = $this->serializer->serializePaths(
             $this->operationRegistry->getAll(),
             $firstScheme,
             $autoResponses,
+            $protoSchemaNames,
         );
 
         $components = $this->serializer->serializeComponents(
