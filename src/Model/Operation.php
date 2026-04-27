@@ -25,4 +25,7 @@ class Operation extends Model
 
     /** Transport shape of the 2xx success payload. Null = ITEM (single entity in {"data": ...}). */
     public ?ResponseShape $responseShape = null;
+
+    /** @var array<string, array<string, mixed>> Explicit query parameters read directly from Request (no form). */
+    public array $queryParameters = [];
 }

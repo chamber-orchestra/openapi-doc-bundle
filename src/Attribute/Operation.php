@@ -23,6 +23,11 @@ class Operation
      *                                                for actions returning `IterableView` and
      *                                                {@see ResponseShape::PAGINATED_LIST} for
      *                                                `PaginatedView` (cursor pagination).
+     * @param array<string, array<string, mixed>> $queryParameters Explicit query parameters for actions that
+     *                                                read query-string values directly from Request without
+     *                                                using a form (e.g. `forAll`, `installationId`).
+     *                                                Each entry is a partial OpenAPI Parameter Object:
+     *                                                `['forAll' => ['schema' => ['type' => 'string'], 'required' => false]]`
      */
     public function __construct(
         public ?string $description = null,
@@ -32,6 +37,7 @@ class Operation
         public ?string $requestContentType = null,
         public ?string $responseContentType = null,
         public ?ResponseShape $responseShape = null,
+        public array $queryParameters = [],
     ) {
     }
 }

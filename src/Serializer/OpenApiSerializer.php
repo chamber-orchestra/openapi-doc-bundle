@@ -102,6 +102,19 @@ class OpenApiSerializer
                 }
             }
 
+            // Merge explicitly declared query parameters (params read directly from Request,
+            // not via a form — e.g. forAll, installationId, cursor on non-form endpoints).
+            foreach ($operation->queryParameters as $name => $paramSpec) {
+                $param = array_merge(
+                    ['name' => $name, 'in' => 'query', 'required' => false],
+                    $paramSpec,
+                );
+                if (!isset($param['schema'])) {
+                    $param['schema'] = ['type' => 'string'];
+                }
+                $pathData['parameters'][] = $param;
+            }
+
             $isProtected = false;
             if (!empty($security = $operation->security)) {
                 $resolved = $security;
