@@ -13,6 +13,8 @@ use ChamberOrchestra\OpenApiDocBundle\Parser\FormTypeHandler\FormTypeHandlerInte
 use ReflectionClass;
 use Symfony\Component\Form\FormFactoryInterface;
 use Symfony\Component\Form\FormTypeInterface;
+use Symfony\Component\Validator\Constraints\NotBlank;
+use Symfony\Component\Validator\Constraints\NotNull;
 use function in_array;
 
 class FormParser implements ComponentParserInterface
@@ -48,11 +50,31 @@ class FormParser implements ComponentParserInterface
             $property = Property::factory($name);
             $model->properties[] = $property;
             $this->findFormType($property, $config);
+
+            if (!$config->getRequired()) {
+                $constraints = $config->getOption('constraints') ?? [];
+                $hasNotNull = $this->hasConstraint($constraints, NotNull::class)
+                    || $this->hasConstraint($constraints, NotBlank::class);
+                if (!$hasNotNull) {
+                    $property->attributes['nullable'] = true;
+                }
+            }
         }
 
         $model->required = $required;
 
         return $model;
+    }
+
+    private function hasConstraint(array $constraints, string $class): bool
+    {
+        foreach ($constraints as $constraint) {
+            if ($constraint instanceof $class) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function findFormType(Property $property, $config): void
