@@ -21,6 +21,7 @@ use ChamberOrchestra\OpenApiDocBundle\Tests\Fixtures\Form\ChoiceFormType;
 use ChamberOrchestra\OpenApiDocBundle\Tests\Fixtures\Form\CollectionFormType;
 use ChamberOrchestra\OpenApiDocBundle\Tests\Fixtures\Form\ConstrainedFormType;
 use ChamberOrchestra\OpenApiDocBundle\Tests\Fixtures\Form\EnumChoiceFormType;
+use ChamberOrchestra\OpenApiDocBundle\Tests\Fixtures\Form\ExtendedFormType;
 use ChamberOrchestra\OpenApiDocBundle\Tests\Fixtures\Form\NestedFormType;
 use ChamberOrchestra\OpenApiDocBundle\Tests\Fixtures\Form\RecursiveFormType;
 use ChamberOrchestra\OpenApiDocBundle\Tests\Fixtures\Form\SimpleFormType;
@@ -92,6 +93,19 @@ class FormParserTest extends AbstractIntegrationTestCase
 
         self::assertContains('name', $component->required);
         self::assertNotContains('age', $component->required);
+    }
+
+    // -------------------------------------------------------------------------
+    // ExtendedFormType
+    // -------------------------------------------------------------------------
+
+    public function testFormExtensionsAreEmittedOnSchema(): void
+    {
+        $this->describer->describe(ExtendedFormType::class);
+
+        $schema = $this->serializer->serializeComponents($this->registry->getAll())['schemas']['ExtendedFormType'];
+
+        self::assertSame('users', $schema['x-request-group']);
     }
 
     // -------------------------------------------------------------------------
