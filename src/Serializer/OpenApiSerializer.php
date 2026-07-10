@@ -304,6 +304,10 @@ class OpenApiSerializer
                 }
             }
 
+            // Specification extensions (x-* keys, validated by the Extension attribute) —
+            // appended last so they can never shadow structural keys.
+            $componentData += $component->extensions;
+
             $data[$component->id] = $componentData;
         }
 

@@ -18,4 +18,6 @@ class Component extends Model
     public ?int $status = null;
     public array $headers = [];
     public array $required = [];
+    /** @var array<string, mixed> OpenAPI specification extensions (x-* keys) emitted on the schema. */
+    public array $extensions = [];
 }

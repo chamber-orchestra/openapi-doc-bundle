@@ -14,6 +14,7 @@ Symfony bundle that **auto-generates OpenAPI 3.0.1 documentation** for applicati
 - GET/DELETE/HEAD requests: form fields automatically expanded as query parameters
 - Recursive schema detection (cycle guard)
 - Security via `#[IsGranted]` — no extra annotation needed
+- OpenAPI specification extensions (`x-*` keys) on request/response schemas via `#[Extension]`
 
 ## Requirements
 
@@ -405,6 +406,43 @@ UserListView:
     items:
         $ref: '#/components/schemas/UserView'
 ```
+
+### 8. Vendor extensions (`x-*` keys)
+
+Use `#[Extension]` (repeatable) on a request class (form type, DTO) or response class
+(view, DTO) to add OpenAPI specification extensions to its generated schema:
+
+```php
+use ChamberOrchestra\OpenApiDocBundle\Attribute\Extension;
+
+#[Extension('x-entity', User::class)]
+#[Extension('x-doc-group', 'users')]
+class UserView implements ViewInterface
+{
+    public string $name;
+}
+```
+
+Generates:
+
+```yaml
+UserView:
+    properties:
+        name: { type: string }
+    required: [name]
+    x-entity: App\Entity\User
+    x-doc-group: users
+```
+
+The extension name must start with `x-`; values may be any scalar, array, or null.
+
+Notes:
+
+- For **property-level** extensions, use the existing `#[Property(attr: [...])]`:
+  `#[Property(attr: ['x-faker' => 'email'])]`.
+- GET/DELETE/HEAD request forms are expanded into query parameters and their schema is
+  excluded from the output — extensions declared on such forms are not emitted.
+- Extensions declared in `proto.yaml` remain untouched and merge as usual.
 
 ## Generating documentation
 
