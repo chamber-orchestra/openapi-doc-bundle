@@ -69,7 +69,7 @@ Parsers are tagged Symfony services. Each implements `supports(object $item): bo
 
 - `#[Operation(description, request, responses, security)]` — class-level; marks an action as a documented endpoint
 - `#[Property(required, attr)]` — property-level on DTOs/views; sets required flag and arbitrary extra OpenAPI attributes
-- `#[Model(model, type)]` — class-level; currently unused in parsers
+- `#[Extension(name, value)]` — class-level, repeatable; adds an OpenAPI specification extension (`x-*` key, prefix validated in the constructor) to the schema generated for a request/response class. Collected centrally in `ComponentDescriber` (works for forms, views, and DTOs alike), emitted by `OpenApiSerializer::serializeComponents`. Dropped for GET/DELETE/HEAD request forms (their schema is excluded in favor of query params).
 
 ### Data flow for a typical action class
 
