@@ -28,6 +28,9 @@ class Operation
      *                                                using a form (e.g. `forAll`, `installationId`).
      *                                                Each entry is a partial OpenAPI Parameter Object:
      *                                                `['forAll' => ['schema' => ['type' => 'string'], 'required' => false]]`
+     * @param array<string, array<string, mixed>> $headerParameters Explicit request headers. Same shape as
+     *                                                $queryParameters; rendered as `in: header` parameters, e.g.
+     *                                                `['X-Device-Id' => ['schema' => ['type' => 'string'], 'required' => false]]`
      */
     public function __construct(
         public ?string $description = null,
@@ -38,6 +41,7 @@ class Operation
         public ?string $responseContentType = null,
         public ?ResponseShape $responseShape = null,
         public array $queryParameters = [],
+        public array $headerParameters = [],
     ) {
     }
 }
