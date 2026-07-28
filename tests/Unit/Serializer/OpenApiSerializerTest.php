@@ -179,6 +179,35 @@ class OpenApiSerializerTest extends TestCase
         self::assertSame('Get a user', $paths['/users/{id}']['get']['description']);
     }
 
+    public function testHeaderParametersRenderedAsHeaderParams(): void
+    {
+        $op                   = new Operation();
+        $op->id               = 'login';
+        $op->path             = '/auth/login';
+        $op->method           = 'POST';
+        $op->headerParameters = [
+            'X-Device-Id' => ['description' => 'Stable device id', 'schema' => ['type' => 'string']],
+            'X-OS'        => ['schema' => ['type' => 'string', 'enum' => ['ios', 'android']]],
+            'X-App'       => [],
+        ];
+
+        [$paths] = $this->serializer->serializePaths([$op], null);
+
+        $params = $paths['/auth/login']['post']['parameters'];
+        $byName = array_column($params, null, 'name');
+
+        self::assertSame('header', $byName['X-Device-Id']['in']);
+        self::assertFalse($byName['X-Device-Id']['required']);
+        self::assertSame('Stable device id', $byName['X-Device-Id']['description']);
+        self::assertSame(['type' => 'string'], $byName['X-Device-Id']['schema']);
+
+        self::assertSame(['type' => 'string', 'enum' => ['ios', 'android']], $byName['X-OS']['schema']);
+
+        // No schema supplied → defaults to string.
+        self::assertSame(['type' => 'string'], $byName['X-App']['schema']);
+        self::assertSame('header', $byName['X-App']['in']);
+    }
+
     public function testOperationWithoutDescriptionOmitsField(): void
     {
         $op              = new Operation();
