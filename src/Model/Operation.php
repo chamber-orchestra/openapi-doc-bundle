@@ -28,4 +28,7 @@ class Operation extends Model
 
     /** @var array<string, array<string, mixed>> Explicit query parameters read directly from Request (no form). */
     public array $queryParameters = [];
+
+    /** @var array<string, array<string, mixed>> Explicit request headers, rendered as `in: header` parameters. */
+    public array $headerParameters = [];
 }

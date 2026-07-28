@@ -134,6 +134,18 @@ class OpenApiSerializer
                 $pathData['parameters'][] = $param;
             }
 
+            // Merge explicitly declared request headers (rendered as `in: header` parameters).
+            foreach ($operation->headerParameters as $name => $paramSpec) {
+                $param = array_merge(
+                    ['name' => $name, 'in' => 'header', 'required' => false],
+                    $paramSpec,
+                );
+                if (!isset($param['schema'])) {
+                    $param['schema'] = ['type' => 'string'];
+                }
+                $pathData['parameters'][] = $param;
+            }
+
             $isProtected = false;
             if (!empty($security = $operation->security)) {
                 $resolved = $security;
