@@ -31,6 +31,19 @@ class Operation
      * @param array<string, array<string, mixed>> $headerParameters Explicit request headers. Same shape as
      *                                                $queryParameters; rendered as `in: header` parameters, e.g.
      *                                                `['X-Device-Id' => ['schema' => ['type' => 'string'], 'required' => false]]`
+     * @param string|null        $metadataSchema      The `metadata` sibling for
+     *                                                {@see ResponseShape::PAGINATED_LIST}. Defaults to the
+     *                                                shared `PaginationMetadata` schema from proto.yaml.
+     *                                                Accepts either a view class — described into a
+     *                                                component like `request` and `responses` are — or the
+     *                                                name of a schema declared in proto.yaml.
+     *
+     *                                                Endpoints whose metadata carries more than the cursor
+     *                                                need this: an active filter, summary counters. Without
+     *                                                it those keys are absent from the spec, so a generated
+     *                                                client drops them while the endpoint keeps sending
+     *                                                them — and widening the shared schema to fit one
+     *                                                endpoint documents fields the others never return.
      */
     public function __construct(
         public ?string $description = null,
@@ -42,6 +55,7 @@ class Operation
         public ?ResponseShape $responseShape = null,
         public array $queryParameters = [],
         public array $headerParameters = [],
+        public ?string $metadataSchema = null,
     ) {
     }
 }
