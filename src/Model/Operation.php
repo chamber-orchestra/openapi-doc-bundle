@@ -31,4 +31,13 @@ class Operation extends Model
 
     /** @var array<string, array<string, mixed>> Explicit request headers, rendered as `in: header` parameters. */
     public array $headerParameters = [];
+
+    /**
+     * Schema for the `metadata` sibling under {@see ResponseShape::PAGINATED_LIST}.
+     *
+     * Null falls back to the shared `PaginationMetadata` from proto.yaml. Resolved the
+     * same way as `request`: a view class becomes a described component, anything else is
+     * taken as the name of a proto.yaml schema.
+     */
+    public ?object $metadataSchema = null;
 }

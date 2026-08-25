@@ -82,6 +82,7 @@ class OpenApiSerializer
                         $operation->responseShape,
                         $operation->id,
                         $protoSchemaNames,
+                        $operation->metadataSchema,
                     );
                 } else {
                     $responses[(string) $status]['$ref'] = '#/components/responses/'.$response;
@@ -225,9 +226,13 @@ class OpenApiSerializer
      *  - LIST              → `{"data": [<entity>, ...]}`
      *  - PAGINATED_LIST    → `{"data": [<entity>, ...], "metadata": {<PaginationMetadata>}}`
      *
+     * The metadata schema is the shared one unless the operation names its own — see
+     * `metadataSchema` on {@see \ChamberOrchestra\OpenApiDocBundle\Attribute\Operation}.
+     *
      * @param string[] $protoSchemaNames Names of schemas declared in proto.yaml — used to
      *                                   verify that PAGINATED_LIST has access to the shared
-     *                                   {@see self::PAGINATION_METADATA_SCHEMA} schema.
+     *                                   {@see self::PAGINATION_METADATA_SCHEMA} schema when
+     *                                   it falls back to it.
      *
      * @return array<string, mixed>
      */
@@ -236,6 +241,7 @@ class OpenApiSerializer
         ?ResponseShape $shape,
         ?string $operationId,
         array $protoSchemaNames,
+        ?object $metadataSchema = null,
     ): array {
         $shape ??= ResponseShape::ITEM;
         $entityRef = ['$ref' => '#/components/schemas/'.$entity->id];
@@ -253,7 +259,12 @@ class OpenApiSerializer
                 ],
                 'required' => ['data'],
             ],
-            ResponseShape::PAGINATED_LIST => $this->buildPaginatedSchema($entityRef, $operationId, $protoSchemaNames),
+            ResponseShape::PAGINATED_LIST => $this->buildPaginatedSchema(
+                $entityRef,
+                $operationId,
+                $protoSchemaNames,
+                $metadataSchema,
+            ),
         };
     }
 
@@ -263,13 +274,23 @@ class OpenApiSerializer
      *
      * @return array<string, mixed>
      */
-    private function buildPaginatedSchema(array $entityRef, ?string $operationId, array $protoSchemaNames): array
-    {
-        if (!in_array(self::PAGINATION_METADATA_SCHEMA, $protoSchemaNames, true)) {
+    private function buildPaginatedSchema(
+        array $entityRef,
+        ?string $operationId,
+        array $protoSchemaNames,
+        ?object $metadataSchema = null,
+    ): array {
+        // An operation may name its own metadata schema; only the shared default has to be
+        // proven present in proto.yaml. A described view class is registered as a component
+        // by the parser, and a caller-supplied proto name is their statement that it exists —
+        // checking it here would reject the very case this argument was added for.
+        $metadataId = $metadataSchema?->id ?? self::PAGINATION_METADATA_SCHEMA;
+
+        if (null === $metadataSchema && !in_array(self::PAGINATION_METADATA_SCHEMA, $protoSchemaNames, true)) {
             throw new \LogicException(\sprintf(
                 'Operation "%s" declares ResponseShape::PAGINATED_LIST but proto.yaml does not '
-                .'define a `components.schemas.%s` schema. Add it to proto.yaml or change the '
-                .'response shape.',
+                .'define a `components.schemas.%s` schema. Add it to proto.yaml, name a schema '
+                .'of your own with `metadataSchema:`, or change the response shape.',
                 $operationId ?? '(unknown)',
                 self::PAGINATION_METADATA_SCHEMA,
             ));
@@ -279,7 +300,7 @@ class OpenApiSerializer
             'type' => 'object',
             'properties' => [
                 'data' => ['type' => 'array', 'items' => $entityRef],
-                'metadata' => ['$ref' => '#/components/schemas/'.self::PAGINATION_METADATA_SCHEMA],
+                'metadata' => ['$ref' => '#/components/schemas/'.$metadataId],
             ],
             'required' => ['data', 'metadata'],
         ];

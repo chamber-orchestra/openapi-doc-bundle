@@ -47,6 +47,19 @@ class OperationParser implements OperationParserInterface
             }
         }
 
+        // Same two forms as $request: a view class is described into a component, anything
+        // else names a schema already declared in proto.yaml.
+        $metadataSchema = $instance->metadataSchema;
+        if (null !== $metadataSchema) {
+            if (class_exists($metadataSchema)) {
+                $model->metadataSchema = $this->componentDescriber->describe($metadataSchema);
+            } else {
+                $metadataModel = new Component();
+                $metadataModel->id = $metadataSchema;
+                $model->metadataSchema = $metadataModel;
+            }
+        }
+
         if (!empty($security = $instance->security)) {
             $modelSecurity = $model->security;
             if (isset($modelSecurity['default'])) {

@@ -310,6 +310,37 @@ class OpenApiSerializerTest extends TestCase
         $this->serializer->serializePaths([$op], null, [], []);
     }
 
+    public function testPaginatedListUsesTheOperationsOwnMetadataSchema(): void
+    {
+        $response         = new Component();
+        $response->id     = 'SavedPropertyView';
+        $response->status = 200;
+
+        $metadata     = new Component();
+        $metadata->id = 'SavedListMetadataView';
+
+        $op                 = new Operation();
+        $op->id             = 'saved';
+        $op->path           = '/user/likes';
+        $op->method         = 'GET';
+        $op->responses      = [200 => $response];
+        $op->responseShape  = \ChamberOrchestra\OpenApiDocBundle\Attribute\ResponseShape::PAGINATED_LIST;
+        $op->metadataSchema = $metadata;
+
+        // proto.yaml deliberately does NOT declare PaginationMetadata here: an operation
+        // that brings its own metadata must not be made to depend on the shared one.
+        [$paths] = $this->serializer->serializePaths([$op], null, [], []);
+        $schema = $paths['/user/likes']['get']['responses']['200']['content']['application/json']['schema'];
+
+        self::assertSame(
+            '#/components/schemas/SavedListMetadataView',
+            $schema['properties']['metadata']['$ref'],
+        );
+        // The rows are unaffected — only the metadata sibling changes.
+        self::assertSame('#/components/schemas/SavedPropertyView', $schema['properties']['data']['items']['$ref']);
+        self::assertSame(['data', 'metadata'], $schema['required']);
+    }
+
     public function testPaginatedListAutoInjectsCursorParam(): void
     {
         $response          = new Component();
